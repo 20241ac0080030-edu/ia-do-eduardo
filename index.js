@@ -1,7 +1,9 @@
 /**
- * SISTEMA N.E.O.N. 3.5 VISION - ENGINE DE INTERFACE MULTIMODAL
+ * SISTEMA N.E.O.N. - ENGINE DE INTERFACE (JS) FINAL
+ * Versão: 3.5 - Integrado com Health Check, Gamificação e Leaderboard
  */
 
+// 1. MAPEAMENTO DE ELEMENTOS DO DOM
 const chatBox = document.getElementById("caixa-chat");
 const campoTexto = document.getElementById("campoTexto");
 const btnEnviar = document.getElementById("btnEnviar");
@@ -12,76 +14,68 @@ const modalRanking = document.getElementById("modalRanking");
 const fecharRanking = document.getElementById("fecharRanking");
 const rankingTabela = document.getElementById("rankingTabela");
 
-// Elementos de Upload de Imagem
-const inputImagem = document.getElementById("inputImagem");
-const containerPreview = document.getElementById("containerPreview");
-const imgPreview = document.getElementById("imgPreview");
-const btnRemoverImagem = document.getElementById("btnRemoverImagem");
+// Elementos do Health Check (Sprint 5)
+const badgeSaude = document.getElementById("indicadorSaude");
+const textoSaude = document.getElementById("textoSaude");
 
-let arquivoImagemSelecionado = null;
 let estaProcessando = false;
 
+// ====================================================================
+// CONFIGURAÇÃO DE ENDPOINTS
+// ====================================================================
 const URL_LOCAL = "http://localhost:3000";
 const URL_NUVEM = "https://t1-p1-a5-o-despertar-da-ia.onrender.com";
 
-const URL_ATIVA = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:") 
-    ? URL_LOCAL 
-    : URL_NUVEM;
+// --- SELECIONE A URL ATIVA ---
+// Deixe em URL_LOCAL para testar no seu computador ou altere para URL_NUVEM para usar o Render
+const URL_ATIVA = URL_LOCAL; 
+// ====================================================================
 
-// Gerenciamento de Preview da Imagem
-inputImagem.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        if (!file.type.startsWith("image/")) {
-            alert("⚠️ Por favor, selecione apenas arquivos de imagem!");
-            inputImagem.value = "";
-            return;
+/**
+ * FASE 1 (SPRINT 5): Verificação de Saúde da API (Health Check)
+ * Executa um fetch em segundo plano para /api/health e atualiza a luz indicadora
+ */
+async function verificarSaudeAPI() {
+    if (!badgeSaude || !textoSaude) return;
+
+    try {
+        const resposta = await fetch(`${URL_ATIVA}/api/health`, { method: "GET" });
+        
+        if (resposta.ok) {
+            const dados = await resposta.json();
+            badgeSaude.classList.remove("offline");
+            badgeSaude.classList.add("online");
+            textoSaude.textContent = "Online";
+            badgeSaude.title = `Servidor: ${dados.servidor} | Banco: ${dados.bancoDeDados} | Uptime: ${dados.uptime}`;
+        } else {
+            throw new Error("Status HTTP não-200");
         }
-        arquivoImagemSelecionado = file;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            imgPreview.src = e.target.result;
-            containerPreview.style.display = "flex";
-        };
-        reader.readAsDataURL(file);
+    } catch (erro) {
+        badgeSaude.classList.remove("online");
+        badgeSaude.classList.add("offline");
+        textoSaude.textContent = "Offline";
+        badgeSaude.title = "Falha no Health Check: API indisponível ou hibernando no Render.";
     }
-});
-
-btnRemoverImagem.addEventListener("click", () => {
-    limparSelecaoImagem();
-});
-
-function limparSelecaoImagem() {
-    arquivoImagemSelecionado = null;
-    inputImagem.value = "";
-    imgPreview.src = "";
-    containerPreview.style.display = "none";
 }
 
-function adicionarMensagem(remetente, texto, urlImagem = null) {
+/**
+ * Renderização de Mensagens com Suporte a Markdown Básico e Confetes
+ */
+function adicionarMensagem(remetente, texto) {
     const div = document.createElement("div");
     div.classList.add("mensagem", remetente === "usuario" ? "msg-usuario" : "msg-ia");
     
-    let htmlConteudo = "";
+    const textoFormatado = texto
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
 
-    // Renderiza imagem caso exista (URL do Cloudinary ou Preview local)
-    if (urlImagem) {
-        htmlConteudo += `<img src="${urlImagem}" class="chat-img-anexada" alt="Anexo Visual" />`;
-    }
-
-    if (texto) {
-        const textoFormatado = texto
-            .replace(/\n/g, '<br>')
-            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-        htmlConteudo += `<div>${textoFormatado}</div>`;
-    }
-
-    div.innerHTML = htmlConteudo;
+    div.innerHTML = textoFormatado;
     chatBox.appendChild(div);
 
+    // DESAFIO HACKER: Dispara confetes se a IA celebrar o acerto da charada
     if (remetente === "ia") {
-        const textoLowerCase = (texto || "").toLowerCase();
-        if (textoLowerCase.includes("parabéns") || textoLowerCase.includes("acertou") || textoLowerCase.includes("correto") || textoLowerCase.includes("parabens")) {
+        const textoMin = texto.toLowerCase();
+        if (textoMin.includes("parabéns") || textoMin.includes("acertou") || textoMin.includes("correto") || textoMin.includes("parabens")) {
             executarConfete();
         }
     }
@@ -94,7 +88,11 @@ function adicionarMensagem(remetente, texto, urlImagem = null) {
 
 function executarConfete() {
     if (typeof confetti === "function") {
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 }
+        });
     }
 }
 
@@ -102,7 +100,7 @@ function mostrarLoading() {
     const loadingDiv = document.createElement("div");
     loadingDiv.classList.add("mensagem", "msg-ia");
     loadingDiv.id = "loading-neon";
-    loadingDiv.innerHTML = `<span class="pulso">.</span><span class="pulso" style="animation-delay: 0.2s">.</span><span class="pulso" style="animation-delay: 0.4s">.</span> Processando visão neural...`;
+    loadingDiv.innerHTML = `<span class="pulso">.</span><span class="pulso" style="animation-delay: 0.2s">.</span><span class="pulso" style="animation-delay: 0.4s">.</span>`;
     chatBox.appendChild(loadingDiv);
     chatBox.scrollTop = chatBox.scrollHeight;
 }
@@ -112,61 +110,63 @@ function removerLoading() {
     if (loading) loading.remove();
 }
 
+/**
+ * Envio de Mensagem para o Agente de IA
+ */
 async function processarEnvioIA() {
     const mensagem = campoTexto.value.trim();
-    const versaoModelo = seletorVersao ? seletorVersao.value : "gemini-2.5-flash";
+    const versaoModelo = seletorVersao ? seletorVersao.value : "gemini-3.5-flash";
     const nick = nicknameInput ? nicknameInput.value.trim() : "";
 
+    // Validação obrigatória do Nickname
     if (!nick) {
-        alert("⚠️ ATENÇÃO OPERADOR: Digite o seu NICK (apelido) no cabeçalho antes de enviar!");
+        alert("⚠️ ATENÇÃO OPERADOR: Digite o seu NICK (apelido) antes de enviar comandos para participar do Ranking!");
         nicknameInput.focus();
         return;
     }
 
-    if ((mensagem === "" && !arquivoImagemSelecionado) || estaProcessando) return;
+    if (mensagem === "" || estaProcessando) return;
 
     try {
         estaProcessando = true;
         btnEnviar.disabled = true;
         btnEnviar.style.opacity = "0.5";
 
-        // Cria a URL temporária da imagem para o balão do usuário
-        const urlPreviewLocal = arquivoImagemSelecionado ? URL.createObjectURL(arquivoImagemSelecionado) : null;
-
-        adicionarMensagem("usuario", mensagem, urlPreviewLocal);
-        
-        // Monta o FormData para o envio multipart
-        const formData = new FormData();
-        formData.append("pergunta", mensagem);
-        formData.append("nickname", nick);
-        formData.append("modelo", versaoModelo);
-
-        if (arquivoImagemSelecionado) {
-            formData.append("imagem", arquivoImagemSelecionado);
-        }
-
+        adicionarMensagem("usuario", mensagem);
         campoTexto.value = ""; 
-        limparSelecaoImagem();
         mostrarLoading();
 
         const respostaServidor = await fetch(`${URL_ATIVA}/api/chat`, {
             method: "POST",
-            body: formData // Envio automático em multipart/form-data
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                pergunta: mensagem, 
+                modelo: versaoModelo,
+                nickname: nick
+            })
         });
 
-        const dados = await respostaServidor.json();
-
         if (!respostaServidor.ok) {
-            throw new Error(dados.erro || "Falha na análise da imagem pelo servidor.");
+            const dadosErro = await respostaServidor.json().catch(() => ({}));
+            throw new Error(dadosErro.erro || "Falha no link neural.");
         }
+
+        const dados = await respostaServidor.json();
 
         removerLoading();
         adicionarMensagem("ia", dados.resposta);
 
+        // Atualiza a verificação de saúde após a interação bem-sucedida
+        verificarSaudeAPI();
+
     } catch (erro) {
         removerLoading();
         console.error("Falha Crítica:", erro);
-        adicionarMensagem("ia", `<span style="color: #ff5555">⚠️ FALHA NO NÚCLEO: ${erro.message}</span>`);
+        let msgErro = erro.message || "⚠️ FALHA NO NÚCLEO: Link neural interrompido. Verifique o servidor Node.js.";
+        adicionarMensagem("ia", `<span style="color: #ff5555">${msgErro}</span>`);
+        
+        // Em caso de erro na comunicação, reavalia a luz de status
+        verificarSaudeAPI();
     } finally {
         estaProcessando = false;
         btnEnviar.disabled = false;
@@ -175,8 +175,11 @@ async function processarEnvioIA() {
     }
 }
 
+/**
+ * Consulta e Exibição do Ranking Global (Leaderboard)
+ */
 async function carregarRankingGlobal() {
-    rankingTabela.innerHTML = `<span style="color: #00f2ff">📡 Estabelecendo conexão...</span>`;
+    rankingTabela.innerHTML = `<span style="color: #00f2ff">📡 Estabelecendo conexão de dados com o Ranking...</span>`;
     modalRanking.style.display = "flex";
 
     try {
@@ -186,7 +189,7 @@ async function carregarRankingGlobal() {
         const jogadores = await resposta.json();
         
         if (jogadores.length === 0) {
-            rankingTabela.innerHTML = `<p style="text-align: center; color: #888;">Nenhum jogador registrado ainda.</p>`;
+            rankingTabela.innerHTML = `<p style="text-align: center; color: #888;">Nenhum jogador registrado no Hall da Fama ainda.</p>`;
             return;
         }
 
@@ -222,6 +225,9 @@ async function carregarRankingGlobal() {
     }
 }
 
+// ====================================================================
+// ESCUTADORES DE EVENTOS
+// ====================================================================
 btnEnviar.addEventListener("click", processarEnvioIA);
 campoTexto.addEventListener("keypress", (e) => {
     if (e.key === "Enter") processarEnvioIA();
@@ -233,19 +239,43 @@ window.addEventListener("click", (e) => {
     if (e.target === modalRanking) modalRanking.style.display = "none";
 });
 
+// Executa o Health Check automático assim que o DOM carregar
+window.addEventListener("DOMContentLoaded", () => {
+    verificarSaudeAPI();
+    // Repete o teste de saúde a cada 30 segundos enquanto a página estiver aberta
+    setInterval(verificarSaudeAPI, 30000);
+});
+
+console.log("💠 Sistemas N.E.O.N. 3.5 operando em carga total. Monitoramento de Saúde Ativo.");
+
+// ====================================================================
+// ROTINA DE FORMATAÇÃO / LIMPEZA
+// ====================================================================
 const btnLimparMemoria = document.getElementById("btnLimpar");
-if (btnLimparMemoria) {
-    btnLimparMemoria.addEventListener("click", async () => {
-        if (confirm("⚠️ ALERTA: Deseja apagar o Banco de Dados e as mídias salvas?")) {
-            try {
-                adicionarMensagem("ia", `<span style="color: #ffcc00">⚠️ Solicitando limpeza do banco...</span>`);
-                const rotaLimpeza = await fetch(`${URL_ATIVA}/api/chat/limpar`, { method: 'DELETE' });
-                if (rotaLimpeza.ok) {
-                    chatBox.innerHTML += `<div class="mensagem msg-ia" style="background-color: #330000; border-color: red; color: white;">🔥 Dados e histórico zerados!</div>`;
-                }
-            } catch (err) {
-                adicionarMensagem("ia", `<span style="color: #ff5555">⚠️ FORMAT FALHOU: ${err.message}</span>`);
+btnLimparMemoria.addEventListener("click", async () => {
+    const confirmacao = confirm("⚠️ ALERTA HACKER: Deseja apagar todo o Banco de Dados MongoDb? Isso removerá o histórico e as memórias de XP de todos os jogadores!");
+    
+    if (confirmacao) {
+        try {
+            adicionarMensagem("ia", `<span style="color: #ffcc00">⚠️ Solicitando limpeza do MongoDB na Cloud...</span>`);
+            btnLimparMemoria.disabled = true;
+
+            const rotaLimpeza = await fetch(`${URL_ATIVA}/api/chat/limpar`, {
+                method: 'DELETE'
+            });
+
+            if (rotaLimpeza.ok) {
+                chatBox.innerHTML += `<div class="mensagem msg-ia" style="background-color: #330000; border-color: red; color: white;">🔥 FIREWALL BYPASS: Coleção limpa no Atlas. FORMAT realizado!</div>`;
+                chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
+            } else {
+                const erroResposta = await rotaLimpeza.json().catch(() => ({}));
+                throw new Error(erroResposta.erro || "Erro HTTP na rota de limpeza.");
             }
+        } catch (erroDelete) {
+            adicionarMensagem("ia", `<span style="color: #ff5555">⚠️ FORMAT FALHOU: ${erroDelete.message}</span>`);
+        } finally {
+            btnLimparMemoria.disabled = false;
+            campoTexto.focus();
         }
-    });
-}
+    }
+});

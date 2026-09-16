@@ -1,11 +1,11 @@
 /* ============================================================
-   INTERFACE NEURAL N.E.O.N. VISION 3.5 - CORE CSS
+   INTERFACE NEURAL N.E.O.N. - CORE CSS 1.3
    ============================================================ */
 
 :root {
     --bg-deep: #050508;
     --panel-bg: rgba(13, 17, 23, 0.95);
-    --neon-accent: #00f2ff;
+    --neon-accent: #00f2ff; /* Cyan Neon */
     --neon-glow: rgba(0, 242, 255, 0.4);
     --user-msg: #1a1a2e;
     --ia-msg: #11141c;
@@ -14,7 +14,12 @@
     --speed-fast: 0.3s;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* 1. RESET E FUNDO GLOBAL */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
 
 body {
     background: var(--bg-deep);
@@ -30,10 +35,11 @@ body {
     overflow: hidden;
 }
 
+/* 2. CONTAINER DO CHAT */
 .chat-container {
     width: 90%;
-    max-width: 580px;
-    height: 88vh;
+    max-width: 550px;
+    height: 85vh;
     background: var(--panel-bg);
     border: 1px solid var(--border-glow);
     border-radius: 20px;
@@ -43,8 +49,9 @@ body {
     backdrop-filter: blur(10px);
 }
 
+/* 3. CABEÇALHO */
 .chat-header {
-    padding: 15px 20px;
+    padding: 12px 20px;
     border-bottom: 1px solid var(--border-glow);
     display: flex;
     justify-content: space-between;
@@ -52,112 +59,299 @@ body {
     background: rgba(15, 17, 26, 0.8);
     border-radius: 20px 20px 0 0;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
-.brand { display: flex; align-items: center; gap: 8px; }
-.brand h1 { font-size: 0.85rem; letter-spacing: 2px; color: var(--neon-accent); text-shadow: 0 0 10px var(--neon-glow); }
-
-.player-identity { display: flex; align-items: center; gap: 6px; }
-.player-identity label { font-size: 11px; color: #fbc531; font-weight: bold; font-family: monospace; }
-.player-identity input { background: #000; border: 1px solid #fbc531; color: #fff; padding: 4px 8px; font-size: 11px; border-radius: 5px; width: 100px; outline: none; font-family: monospace; }
-
-.engine-selector select { background: #000; color: var(--neon-accent); border: 1px solid var(--neon-glow); padding: 4px 8px; font-size: 11px; border-radius: 5px; outline: none; cursor: pointer; }
-
-.chat-box { flex-grow: 1; padding: 25px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
-.chat-box::-webkit-scrollbar { width: 4px; }
-.chat-box::-webkit-scrollbar-thumb { background: var(--neon-glow); border-radius: 10px; }
-
-/* Mensagens e Imagens */
-.mensagem { padding: 14px 18px; border-radius: 14px; max-width: 85%; font-size: 0.92rem; line-height: 1.6; animation: slideUp 0.4s ease-out; }
-@keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-
-.msg-usuario { background-color: var(--user-msg); border: 1px solid rgba(0, 242, 255, 0.2); color: var(--neon-accent); align-self: flex-end; border-bottom-right-radius: 0px; }
-.msg-ia { background-color: var(--ia-msg); border: 1px solid var(--border-glow); align-self: flex-start; border-bottom-left-radius: 0px; }
-
-/* Imagens dentro dos Balões de Chat */
-.chat-img-anexada {
-    max-width: 100%;
-    max-height: 220px;
-    border-radius: 10px;
-    margin-bottom: 10px;
-    border: 1px solid var(--neon-accent);
-    display: block;
-    box-shadow: 0 0 10px rgba(0, 242, 255, 0.2);
-}
-
-/* Área de Preview da Imagem */
-.container-preview {
-    padding: 10px 20px 0;
+.brand {
     display: flex;
     align-items: center;
+    gap: 8px;
 }
 
-.preview-card {
-    position: relative;
-    display: inline-block;
-    border: 1px solid var(--neon-accent);
-    border-radius: 8px;
-    padding: 4px;
-    background: #000;
-}
-
-.preview-card img {
-    height: 60px;
-    border-radius: 5px;
-    display: block;
-}
-
-#btnRemoverImagem {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    background: #ff4444;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-    font-weight: bold;
-    font-size: 14px;
-    line-height: 18px;
-    text-align: center;
-}
-
-/* Input e Botões */
-.chat-input { padding: 15px 20px; border-top: 1px solid var(--border-glow); display: flex; gap: 8px; align-items: center; }
-
-#campoTexto { flex-grow: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glow); padding: 12px 18px; border-radius: 10px; color: #fff; outline: none; transition: var(--speed-fast); }
-#campoTexto:focus { border-color: var(--neon-accent); box-shadow: 0 0 10px rgba(0, 242, 255, 0.1); }
-
-.btn-anexo {
-    background: #1e272e;
+.brand h1 {
+    font-size: 0.85rem;
+    letter-spacing: 2px;
     color: var(--neon-accent);
-    border: 1px solid var(--border-glow);
-    padding: 10px 14px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 16px;
-    transition: 0.2s;
+    text-shadow: 0 0 10px var(--neon-glow);
+}
+
+/* ============================================================
+   HEALTH CHECK BADGE (SPRINT 5 - MONITORAMENTO DE SAÚDE)
+   ============================================================ */
+.health-badge {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bold;
+    border: 1px solid transparent;
+    cursor: default;
+    transition: var(--speed-fast);
 }
-.btn-anexo:hover { background: #2c3e50; border-color: var(--neon-accent); }
 
-#btnEnviar { background: linear-gradient(135deg, #0077ff, #00f2ff); color: #000; font-weight: bold; border: none; padding: 12px 20px; border-radius: 10px; cursor: pointer; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; transition: 0.3s; }
-#btnEnviar:hover { transform: translateY(-2px); box-shadow: 0 5px 15px var(--neon-glow); }
+.health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
 
-.btn-danger { background: #bf1832; color: white; padding: 10px 12px; border: 1px solid #ff4444; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: monospace; font-size: 11px; }
-.btn-warning { background: #e1b12c; color: #000; font-weight: bold; border-radius: 8px; border: 1px solid #fbc531; cursor: pointer; padding: 10px 12px; font-size: 11px; }
+/* Estado Online (Verde Neon Pulsante) */
+.health-badge.online {
+    background: rgba(46, 204, 113, 0.1);
+    border-color: rgba(46, 204, 113, 0.4);
+    color: #2ecc71;
+}
+.health-badge.online .health-dot {
+    background-color: #2ecc71;
+    box-shadow: 0 0 8px #2ecc71;
+    animation: pulsoVerde 2s infinite;
+}
 
-/* Modal Ranking */
-.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px); justify-content: center; align-items: center; z-index: 1000; }
-.modal-content { background: #0d1117; border: 2px solid #e1b12c; border-radius: 15px; width: 90%; max-width: 450px; padding: 25px; position: relative; box-shadow: 0 0 30px rgba(225, 177, 44, 0.3); text-align: center; }
-.close-btn { position: absolute; top: 15px; right: 20px; font-size: 30px; color: #e1b12c; cursor: pointer; }
-.ranking-tabela table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-.ranking-tabela th, .ranking-tabela td { padding: 10px; border-bottom: 1px solid #30363d; font-size: 13px; }
-.ranking-tabela th { color: var(--neon-accent); text-transform: uppercase; font-size: 11px; }
+/* Estado Offline / Hibernando (Vermelho) */
+.health-badge.offline {
+    background: rgba(231, 76, 60, 0.1);
+    border-color: rgba(231, 76, 60, 0.4);
+    color: #e74c3c;
+}
+.health-badge.offline .health-dot {
+    background-color: #e74c3c;
+    box-shadow: 0 0 8px #e74c3c;
+}
 
-.pulso { animation: pulso 1.4s infinite; display: inline-block; }
-@keyframes pulso { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; color: var(--neon-accent); } }
+@keyframes pulsoVerde {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.15); }
+}
+
+/* Identificação do Jogador (Nickname) */
+.player-identity {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.player-identity label {
+    font-size: 11px;
+    color: #fbc531;
+    font-weight: bold;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+.player-identity input {
+    background: #000;
+    border: 1px solid #fbc531;
+    color: #fff;
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 5px;
+    width: 90px;
+    outline: none;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+.player-identity input:focus {
+    box-shadow: 0 0 5px #fbc531;
+}
+
+/* Seletor de Versão do Gemini */
+.engine-selector select {
+    background: #000;
+    color: var(--neon-accent);
+    border: 1px solid var(--neon-glow);
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: 'Courier New', Courier, monospace;
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+}
+
+/* 4. CAIXA DE CONVERSA */
+.chat-box {
+    flex-grow: 1;
+    padding: 25px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* Scrollbar Futurista */
+.chat-box::-webkit-scrollbar { width: 4px; }
+.chat-box::-webkit-scrollbar-track { background: transparent; }
+.chat-box::-webkit-scrollbar-thumb { 
+    background: var(--neon-glow); 
+    border-radius: 10px; 
+}
+
+/* 5. MENSAGENS E ANIMAÇÕES */
+.mensagem {
+    padding: 14px 18px;
+    border-radius: 14px;
+    max-width: 85%;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    animation: slideUp 0.4s ease-out;
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-usuario {
+    background-color: var(--user-msg);
+    border: 1px solid rgba(0, 242, 255, 0.2);
+    color: var(--neon-accent);
+    align-self: flex-end;
+    border-bottom-right-radius: 0px;
+}
+
+.msg-ia {
+    background-color: var(--ia-msg);
+    border: 1px solid var(--border-glow);
+    align-self: flex-start;
+    border-bottom-left-radius: 0px;
+}
+
+/* 6. ENTRADA DE COMANDOS (INPUT) */
+.chat-input {
+    padding: 20px;
+    border-top: 1px solid var(--border-glow);
+    display: flex;
+    gap: 12px;
+}
+
+#campoTexto {
+    flex-grow: 1;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-glow);
+    padding: 12px 18px;
+    border-radius: 10px;
+    color: #fff;
+    outline: none;
+    transition: var(--speed-fast);
+}
+
+#campoTexto:focus {
+    border-color: var(--neon-accent);
+    box-shadow: 0 0 10px rgba(0, 242, 255, 0.1);
+}
+
+#btnEnviar {
+    background: linear-gradient(135deg, #0077ff, #00f2ff);
+    color: #000;
+    font-weight: bold;
+    border: none;
+    padding: 0 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: 0.3s;
+}
+
+#btnEnviar:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px var(--neon-glow);
+}
+
+/* Estilos de Pulso */
+.pulso {
+    animation: pulso 1.4s infinite;
+    display: inline-block;
+    margin-right: 2px;
+}
+
+@keyframes pulso {
+    0% { opacity: 0.3; }
+    50% { opacity: 1; color: var(--neon-accent); }
+    100% { opacity: 0.3; }
+}
+
+/* ============================================================
+   MODAL E LEADERBOARD (RANKING GLOBAL)
+   ============================================================ */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(5px);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: #0d1117;
+    border: 2px solid #e1b12c;
+    border-radius: 15px;
+    width: 90%;
+    max-width: 450px;
+    padding: 25px;
+    position: relative;
+    box-shadow: 0 0 30px rgba(225, 177, 44, 0.3);
+    text-align: center;
+    animation: zoomIn 0.3s ease-out;
+}
+
+@keyframes zoomIn {
+    from { transform: scale(0.8); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.close-btn {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 30px;
+    color: #e1b12c;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.close-btn:hover {
+    color: #fff;
+    text-shadow: 0 0 10px #e1b12c;
+}
+
+.modal-content h2 {
+    font-size: 1.2rem;
+    color: #e1b12c;
+    margin-bottom: 20px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(225, 177, 44, 0.4);
+}
+
+.ranking-tabela table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.ranking-tabela th, .ranking-tabela td {
+    padding: 10px;
+    border-bottom: 1px solid #30363d;
+    font-size: 13px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.ranking-tabela th {
+    color: var(--neon-accent);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+.ranking-tabela tbody tr:hover {
+    background: rgba(225, 177, 44, 0.05);
+}

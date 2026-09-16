@@ -3,111 +3,59 @@ const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const mongoose = require('mongoose');
-const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-mongoose.set('bufferCommands', false);
-
+// Memória de contingência caso o MongoDB esteja offline
 let memoriaContingencia = [];
-let rankingContingencia = {};
 
 // ====================================================================
-// 1. CONFIGURAÇÃO DO CLOUDINARY (OBJECT STORAGE)
+// 1. CONEXÃO COM O BANCO DE DADOS MONGODB
 // ====================================================================
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
-});
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('📦 BANCO DE DADOS ATIVO!'))
+  .catch((err) => console.error('❌ ERRO MONGO (Modo de Contingência Ativo):', err.message));
 
-// Helper para Upload de Buffer para o Cloudinary
-function uploadParaCloudinary(buffer) {
-    return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            { folder: "neon_multimodal" },
-            (error, result) => {
-                if (error) reject(error);
-                else resolve(result.secure_url);
-            }
-        );
-        stream.end(buffer);
-    });
-}
-
-// ====================================================================
-// 2. CONFIGURAÇÃO DO MULTER (UPLOAD NA RAM) COM VALIDAÇÕES
-// ====================================================================
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 }, // Limite de 5MB
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Formato inválido! Envie apenas arquivos de imagem (PNG, JPG, WEBP).'), false);
-        }
-    }
-});
-
-// ====================================================================
-// 3. CONEXÃO MONGODB & SCHEMAS
-// ====================================================================
-if (process.env.MONGO_URI && !process.env.MONGO_URI.includes("127.0.0.1")) {
-    mongoose.connect(process.env.MONGO_URI)
-      .then(() => console.log('📦 BANCO DE DADOS ATIVO (MongoDB Atlas)!'))
-      .catch((err) => console.error('⚠️ AVISO MONGO (Modo sem banco ativo):', err.message));
-} else {
-    console.log('⚠️ MONGO_URI não informada/local. Rodando em Modo de Contingência (RAM).');
-}
-
+// Modelo de Memória do Chat
 const MensagemSchema = new mongoose.Schema({
     role: String,
     parts: [{ text: String }],
-    imageUrl: { type: String, default: null }, // Campo para armazenar URL do Cloudinary
     dataHora: { type: Date, default: Date.now }
 });
 const MensagemDbModel = mongoose.model('MemoriaSessao', MensagemSchema);
 
+// Schema de Jogador com XP (Gamificação)
 const JogadorSchema = new mongoose.Schema({
     nome: { type: String, unique: true, required: true },
     xp: { type: Number, default: 0 }
 });
 const JogadorModel = mongoose.model('Jogador', JogadorSchema);
 
-const apiKey = process.env.GEMINI_API_KEY;
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
-
-function obterModeloValido(modeloRecebido) {
-    if (!modeloRecebido || typeof modeloRecebido !== 'string') return "gemini-2.5-flash";
-    const mod = modeloRecebido.toLowerCase().trim();
-    if (mod.includes("pro")) return "gemini-2.5-pro";
-    if (mod.includes("lite")) return "gemini-2.5-flash-lite";
-    return "gemini-2.5-flash";
-}
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ====================================================================
-// 4. FERRAMENTAS DO AGENTE (TOOLS)
+// 2. FERRAMENTAS DO AGENTE (FUNCTION CALLING)
 // ====================================================================
+
 async function adicionarXP(nickname, quantidade) {
     try {
         const nomeFormatado = nickname.trim();
-        if (!nomeFormatado) return { erro: "Nickname inválido." };
+        if (!nomeFormatado) return { erro: "Nickname inválido para receber pontuação." };
 
-        if (mongoose.connection.readyState === 1) {
-            const jogador = await JogadorModel.findOneAndUpdate(
-                { nome: nomeFormatado },
-                { $inc: { xp: quantidade } },
-                { new: true, upsert: true }
-            );
-            return { nickname: jogador.nome, xpAtual: jogador.xp, quantidadeAlterada: quantidade };
-        } else {
-            rankingContingencia[nomeFormatado] = (rankingContingencia[nomeFormatado] || 0) + quantidade;
-            return { nickname: nomeFormatado, xpAtual: rankingContingencia[nomeFormatado], quantidadeAlterada: quantidade };
-        }
+        const jogador = await JogadorModel.findOneAndUpdate(
+            { nome: nomeFormatado },
+            { $inc: { xp: quantidade } },
+            { new: true, upsert: true }
+        );
+
+        return {
+            nickname: jogador.nome,
+            xpAtual: jogador.xp,
+            quantidadeAlterada: quantidade,
+            mensagem: `XP de ${jogador.nome} atualizado. XP Atual: ${jogador.xp}`
+        };
     } catch (error) {
         return { erro: `Falha ao processar XP: ${error.message}` };
     }
@@ -115,13 +63,21 @@ async function adicionarXP(nickname, quantidade) {
 
 async function buscarClimaTempoReal(cidade) {
     try {
-        const weatherApiKey = process.env.WEATHER_API_KEY;
-        if (!weatherApiKey) return { info: "Configure WEATHER_API_KEY no .env" };
-        const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(cidade)}&units=metric&lang=pt_br&appid=${weatherApiKey}`;
+        const apiKey = process.env.WEATHER_API_KEY;
+        if (!apiKey) return { erro: "Chave de API do clima não configurada no servidor." };
+        
+        const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(cidade)}&units=metric&lang=pt_br&appid=${apiKey}`;
         const response = await fetch(url);
         if (!response.ok) return { erro: `Cidade '${cidade}' não localizada.` };
+        
         const data = await response.json();
-        return { cidade: data.name, temperatura: `${Math.round(data.main.temp)}°C`, clima: data.weather[0].description };
+        return {
+            cidade: data.name,
+            temperatura: `${Math.round(data.main.temp)}°C`,
+            sensacaoTermica: `${Math.round(data.main.feels_like)}°C`,
+            clima: data.weather[0].description,
+            umidade: `${data.main.humidity}%`
+        };
     } catch (error) {
         return { erro: `Erro de clima: ${error.message}` };
     }
@@ -132,170 +88,181 @@ async function converterMoedas(valor, de, para) {
         const from = de.toUpperCase();
         const to = para.toUpperCase();
         if (from === to) return { valorOriginal: valor, moedaOrigem: from, moedaDestino: to, valorConvertido: valor };
+        
         const url = `https://api.frankfurter.app/latest?amount=${valor}&from=${from}&to=${to}`;
         const response = await fetch(url);
-        if (!response.ok) return { erro: `Falha na conversão.` };
+        if (!response.ok) return { erro: `Falha ao converter moedas de ${from} para ${to}.` };
+        
         const data = await response.json();
-        return { valorOriginal: valor, moedaOrigem: from, moedaDestino: to, valorConvertido: data.rates[to].toFixed(2) };
+        const resultado = data.rates[to];
+        return {
+            valorOriginal: valor,
+            moedaOrigem: from,
+            moedaDestino: to,
+            valorConvertido: resultado.toFixed(2),
+            dataCotacao: data.date
+        };
     } catch (error) {
         return { erro: `Erro na conversão: ${error.message}` };
     }
 }
 
+// ====================================================================
+// 3. DECLARAÇÃO DAS FERRAMENTAS / SCHEMAS (JSON SCHEMA)
+// ====================================================================
+
 const declaracaoXP = {
     name: "adicionarXP",
-    description: "Adiciona ou remove XP de um usuário baseado no nickname.",
+    description: "Adiciona ou remove pontos de Experiência (XP) de um usuário baseado no seu nickname. Chame obrigatoriamente se ele acertar a charada (adicione 50 pontos) ou se ele errar feio/desistir (subtraia 10 pontos). Não diga o valor numérico exato na resposta final, apenas informe que os pontos foram computados.",
     parameters: {
         type: "OBJECT",
-        properties: { nickname: { type: "STRING" }, quantidade: { type: "INTEGER" } },
+        properties: {
+            nickname: { type: "STRING", description: "O nome de login ou apelido do usuário que está jogando." },
+            quantidade: { type: "INTEGER", description: "A quantidade de pontos para somar (ex: 50) ou subtrair (ex: -10)." }
+        },
         required: ["nickname", "quantidade"]
     }
 };
 
 const declaracaoClima = {
     name: "buscarClimaTempoReal",
-    description: "Obtém a temperatura e clima atual de uma cidade.",
+    description: "Obtém a temperatura exata e o clima atual de uma cidade. Use sempre que o usuário perguntar sobre o tempo.",
     parameters: {
         type: "OBJECT",
-        properties: { cidade: { type: "STRING" } },
+        properties: {
+            cidade: { type: "STRING", description: "O nome da cidade. Ex: Assis Chateaubriand, Curitiba, Tokyo." }
+        },
         required: ["cidade"]
     }
 };
 
 const declaracaoMoeda = {
     name: "converterMoedas",
-    description: "Converte valores entre moedas internacionais.",
+    description: "Converte valores financeiros entre moedas internacionais. Use sempre que solicitado.",
     parameters: {
         type: "OBJECT",
-        properties: { valor: { type: "NUMBER" }, de: { type: "STRING" }, para: { type: "STRING" } },
+        properties: {
+            valor: { type: "NUMBER", description: "O valor numérico. Ex: 150." },
+            de: { type: "STRING", description: "Código de 3 letras da moeda de origem. Ex: USD, EUR." },
+            para: { type: "STRING", description: "Código de 3 letras da moeda de destino. Ex: BRL, USD." }
+        },
         required: ["valor", "de", "para"]
     }
 };
 
 // ====================================================================
-// 5. ROTAS
+// 4. ROTAS HTTP
 // ====================================================================
 
-// Rota de Leaderboard
+// SPRINT 5: Health Check
+app.get('/api/health', (req, res) => {
+    const estadoMongo = mongoose.connection.readyState;
+    const statusBanco = estadoMongo === 1 ? "conectado" : "desconectado/contingencia";
+
+    return res.status(200).json({
+        status: "ok",
+        servidor: "operacional",
+        bancoDeDados: statusBanco,
+        timestamp: new Date().toISOString(),
+        uptime: `${Math.floor(process.uptime())} segundos`
+    });
+});
+
+// Ranking Global
 app.get('/api/ranking', async (req, res) => {
     try {
-        let listaRanking = [];
-        if (mongoose.connection.readyState === 1) {
-            listaRanking = await JogadorModel.find().sort({ xp: -1 }).limit(10).lean();
-        } else {
-            listaRanking = Object.keys(rankingContingencia).map(nome => ({ nome, xp: rankingContingencia[nome] })).sort((a, b) => b.xp - a.xp).slice(0, 10);
-        }
-        const rankingGamificado = listaRanking.map(j => {
+        const ranking = await JogadorModel.find().sort({ xp: -1 }).limit(10).lean();
+        
+        const rankingGamificado = ranking.map(jogador => {
             let titulo = "Novato";
-            if (j.xp >= 500) titulo = "Lenda";
-            else if (j.xp >= 300) titulo = "Mestre";
-            else if (j.xp >= 100) titulo = "Guerreiro";
-            return { nome: `${titulo}: ${j.nome}`, xp: j.xp };
+            if (jogador.xp >= 500) titulo = "Lenda";
+            else if (jogador.xp >= 300) titulo = "Mestre";
+            else if (jogador.xp >= 100) titulo = "Guerreiro";
+            
+            return {
+                nome: `${titulo}: ${jogador.nome}`,
+                xp: jogador.xp
+            };
         });
+        
         res.status(200).json(rankingGamificado);
     } catch (e) {
         res.status(500).json({ erro: `Falha ao processar ranking: ${e.message}` });
     }
 });
 
-// Middleware Wrapper de Tratamento de Erros de Upload do Multer
-const tratarUpload = (req, res, next) => {
-    upload.single('imagem')(req, res, (err) => {
-        if (err instanceof multer.MulterError) {
-            if (err.code === 'LIMIT_FILE_SIZE') {
-                return res.status(400).json({ sucesso: false, erro: '⚠️ ARQUIVO MUITO GRANDE: O limite máximo por imagem é de 5MB.' });
-            }
-            return res.status(400).json({ sucesso: false, erro: `⚠️ Erro de Upload: ${err.message}` });
-        } else if (err) {
-            return res.status(400).json({ sucesso: false, erro: `⚠️ ${err.message}` });
-        }
-        next();
-    });
-};
-
-// Rota Principal de Chat (Aceita Texto + Imagem via Multipart/FormData)
-app.post('/api/chat', tratarUpload, async (req, res) => {
+// Rota Principal de Chat
+app.post('/api/chat', async (req, res) => {
     try {
-        if (!genAI) {
-            return res.status(500).json({ sucesso: false, erro: "⚙️ CONFIGURAÇÃO PENDENTE: Configure GEMINI_API_KEY no .env" });
-        }
+        // CORREÇÃO: Agora recebe 'modelo' dinamicamente do frontend!
+        const { pergunta, nickname, modelo } = req.body;
+        if (!pergunta) return res.status(400).json({ erro: "Envie uma pergunta." });
 
-        const { pergunta, nickname, modelo } = req.body || {};
-        if (!pergunta && !req.file) {
-            return res.status(400).json({ sucesso: false, erro: "Envie pelo menos um texto ou uma imagem." });
-        }
+        const nomeDoJogador = nickname ? nickname.trim() : "Visitante";
+        
+        // CORREÇÃO: Usa o modelo enviado pelo front (gemini-2.5-flash) com fallback ativo!
+        const modeloAtivo = modelo || "gemini-2.5-flash"; 
 
-        const perguntaSanitizada = pergunta ? pergunta.trim() : "Analise esta imagem enviada.";
-        const nomeDoJogador = (nickname && nickname.trim()) ? nickname.trim() : "Visitante";
-        const modeloFinal = obterModeloValido(modelo);
-
-        let urlImagemCloudinary = null;
-
-        // Se houver arquivo de imagem, faz upload no Cloudinary
-        if (req.file) {
-            if (!process.env.CLOUDINARY_CLOUD_NAME) {
-                return res.status(500).json({ sucesso: false, erro: "⚙️ Credenciais do Cloudinary ausentes no servidor!" });
-            }
-            console.log(`📸 [STORAGE] Fazendo upload de imagem de '${nomeDoJogador}' para o Cloudinary...`);
-            urlImagemCloudinary = await uploadParaCloudinary(req.file.buffer);
-            console.log(`🔗 [STORAGE] Upload Concluído: ${urlImagemCloudinary}`);
-        }
-
-        // Monta o array de partes para a IA Multimodal (inlineData)
-        const partesPrompt = [];
-        if (req.file) {
-            partesPrompt.push({
-                inlineData: {
-                    mimeType: req.file.mimetype,
-                    data: req.file.buffer.toString('base64')
-                }
-            });
-        }
-        partesPrompt.push({ text: perguntaSanitizada });
-
-        // Instruções de Sistema N.E.O.N. Visão
-        const systemInstruction = `Você é o N.E.O.N. 3.5 - Agente Neural Multimodal com capacidade de Visão Computacional.
-            Trate o usuário pelo apelido: "${nomeDoJogador}".
-            Se o usuário enviar uma imagem: analise os pixels detalhadamente, descreva, leia cupons/OCR se solicitado, ou proponha uma charada cyberpunk baseada na foto.
-            Se for uma charada resolvida, chame 'adicionarXP' (+50). Se desistir/errar, (-10).
-            Não exiba valores numéricos brutos de XP no texto.`;
-
-        // Histórico recente
+        // Histórico de mensagens
         let docs = [];
+        let usandoBanco = false;
+
         if (mongoose.connection.readyState === 1) {
-            try { docs = await MensagemDbModel.find().sort({ dataHora: 1 }).limit(10).lean(); }
-            catch (e) { docs = memoriaContingencia.slice(-10); }
-        } else { docs = memoriaContingencia.slice(-10); }
+            try {
+                docs = await MensagemDbModel.find().sort({ dataHora: 1 }).limit(10).lean();
+                usandoBanco = true;
+            } catch (dbErr) {
+                docs = memoriaContingencia.slice(-10);
+            }
+        } else {
+            docs = memoriaContingencia.slice(-10);
+        }
 
         const historicoSeguro = docs.map(d => ({
             role: d.role === "model" ? "model" : "user",
             parts: [{ text: d.parts?.[0]?.text || "" }]
         }));
 
+        // CORREÇÃO: apiVersion v1beta adicionada para suportar Function Calling sem erro 404!
         const modelIA = genAI.getGenerativeModel({ 
-            model: modeloFinal, 
-            systemInstruction: systemInstruction,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 1000 },
+            model: modeloAtivo, 
+            systemInstruction: `Você é o Mestre do Jogo e Guardião do conhecimento cibernético do SISTEMA N.E.O.N. 3.5.
+            Trate o usuário pelo apelido informado: ${nomeDoJogador}.
+            Regra do Jogo: Proponha desafios e charadas intrigantes sobre tecnologia, hacking e computação. 
+            Se o usuário responder acertando a charada de forma justa, você DEVE obrigatoriamente chamar a função 'adicionarXP' passando o nickname '${nomeDoJogador}' e 50 pontos de quantidade.
+            Se ele pedir a resposta, errar muito ou desistir, você deve chamar a função 'adicionarXP' e retirar 10 pontos (passando -10).
+            Nunca revele no texto final a numeração exata de XP do usuário, apenas o parabenize ou lamente os pontos alterados. 
+            Além disso, você continua capaz de executar buscas de clima e moedas quando o usuário solicitar.`,
             tools: [{ functionDeclarations: [declaracaoClima, declaracaoMoeda, declaracaoXP] }]
-        });
+        }, { apiVersion: "v1beta" }); 
 
         const chatSession = modelIA.startChat({ history: historicoSeguro });
 
-        let result = await chatSession.sendMessage(partesPrompt);
+        let result = await chatSession.sendMessage(pergunta);
         let parts = result.response.candidates?.[0]?.content?.parts;
         let functionCallPart = parts?.find(p => p.functionCall);
 
         while (functionCallPart) {
             const { name, args } = functionCallPart.functionCall;
-            console.log(`🤖 [TOOL EXECUTADA]: ${name}`, args);
+            console.log(`🤖 Ferramenta acionada: ${name} com args:`, args);
 
             let functionResult = {};
-            if (name === "buscarClimaTempoReal") functionResult = await buscarClimaTempoReal(args.cidade);
-            else if (name === "converterMoedas") functionResult = await converterMoedas(args.valor, args.de, args.para);
-            else if (name === "adicionarXP") functionResult = await adicionarXP(args.nickname || nomeDoJogador, args.quantidade);
+            if (name === "buscarClimaTempoReal") {
+                functionResult = await buscarClimaTempoReal(args.cidade);
+            } else if (name === "converterMoedas") {
+                functionResult = await converterMoedas(args.valor, args.de, args.para);
+            } else if (name === "adicionarXP") {
+                const nickAlvo = args.nickname || nomeDoJogador;
+                functionResult = await adicionarXP(nickAlvo, args.quantidade);
+            }
 
             result = await chatSession.sendMessage([
-                { functionResponse: { name: name, response: { result: functionResult } } }
+                {
+                    functionResponse: {
+                        name: name,
+                        response: { result: functionResult }
+                    }
+                }
             ]);
 
             parts = result.response.candidates?.[0]?.content?.parts;
@@ -304,53 +271,42 @@ app.post('/api/chat', tratarUpload, async (req, res) => {
 
         const respostaTexto = result.response.text();
 
-        // Salva histórico no Mongo (incluindo URL do Cloudinary se houver)
-        if (mongoose.connection.readyState === 1) {
+        // Salva interação no histórico
+        if (usandoBanco && mongoose.connection.readyState === 1) {
             try {
-                await MensagemDbModel.create({ 
-                    role: "user", 
-                    parts: [{ text: perguntaSanitizada }], 
-                    imageUrl: urlImagemCloudinary 
-                });
-                await MensagemDbModel.create({ 
-                    role: "model", 
-                    parts: [{ text: respostaTexto }] 
-                });
-            } catch (errDb) {
-                console.error("❌ Erro ao salvar no Mongo:", errDb.message);
+                await MensagemDbModel.create({ role: "user", parts: [{ text: pergunta }] });
+                await MensagemDbModel.create({ role: "model", parts: [{ text: respostaTexto }] });
+            } catch (saveErr) {
+                console.error("❌ Erro ao salvar histórico:", saveErr.message);
             }
         } else {
-            memoriaContingencia.push({ role: "user", parts: [{ text: perguntaSanitizada }], imageUrl: urlImagemCloudinary });
+            memoriaContingencia.push({ role: "user", parts: [{ text: pergunta }] });
             memoriaContingencia.push({ role: "model", parts: [{ text: respostaTexto }] });
         }
 
-        return res.status(200).json({ 
-            sucesso: true, 
-            resposta: respostaTexto, 
-            imageUrl: urlImagemCloudinary,
-            modeloUtilizado: modeloFinal 
-        });
+        return res.status(200).json({ sucesso: true, resposta: respostaTexto });
 
     } catch (erro) {
-        console.error("❌ ERRO NO CHAT MULTIMODAL:", erro.message);
+        console.error("❌ ERRO NO PROCESSO:", erro.message);
         return res.status(500).json({ sucesso: false, erro: `Falha no Servidor: ${erro.message}` });
     }
 });
 
-// Rota de Limpeza
+// Limpeza
 app.delete('/api/chat/limpar', async (req, res) => {
     try {
         memoriaContingencia = [];
-        rankingContingencia = {};
         if (mongoose.connection.readyState === 1) {
             await MensagemDbModel.deleteMany({});
             await JogadorModel.deleteMany({});
         }
         res.json({ sucesso: true });
-    } catch (e) { res.status(500).json({ erro: e.message }); }
+    } catch (e) { 
+        res.status(500).json({ erro: "Erro ao redefinir base: " + e.message }); 
+    }
 });
 
 const PORTA = process.env.PORT || 3000;
 app.listen(PORTA, () => {
-    console.log(`🚀 SERVIDOR MULTIMODAL OPERACIONAL NA PORTA ${PORTA}`);
+    console.log(`🚀 SERVIDOR OPERACIONAL NA PORTA ${PORTA}`);
 });

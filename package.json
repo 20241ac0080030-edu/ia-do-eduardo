@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
+    "all": "^0.0.0",
     "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
