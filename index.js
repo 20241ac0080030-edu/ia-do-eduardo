@@ -1,6 +1,6 @@
 /**
  * SISTEMA N.E.O.N. - ENGINE DE INTERFACE (JS) FINAL
- * Versão: 3.5 - Integrado com Health Check, Gamificação e Leaderboard
+ * Versão: 3.6 - Integrado com RAG Corporativo, JWT, Health Check e Gamificação
  */
 
 // 1. MAPEAMENTO DE ELEMENTOS DO DOM
@@ -14,11 +14,19 @@ const modalRanking = document.getElementById("modalRanking");
 const fecharRanking = document.getElementById("fecharRanking");
 const rankingTabela = document.getElementById("rankingTabela");
 
-// Elementos do Health Check (Sprint 5)
+// Elementos de Health Check (Sprint 5)
 const badgeSaude = document.getElementById("indicadorSaude");
 const textoSaude = document.getElementById("textoSaude");
 
+// SPRINT 6: Elementos de Upload e Controle de Documentos RAG
+const docUploadInput = document.getElementById("docUpload");
+const containerDocAtivo = document.getElementById("containerDocAtivo");
+const nomeDocAtivo = document.getElementById("nomeDocAtivo");
+const btnRemoverDoc = document.getElementById("btnRemoverDoc");
+
 let estaProcessando = false;
+let documentoSelecionado = null; // Guarda o arquivo PDF ou TXT em memória
+let modoRAGAtivo = false;
 
 // ====================================================================
 // CONFIGURAÇÃO DE ENDPOINTS
@@ -33,7 +41,6 @@ const URL_ATIVA = URL_LOCAL;
 
 /**
  * FASE 1 (SPRINT 5): Verificação de Saúde da API (Health Check)
- * Executa um fetch em segundo plano para /api/health e atualiza a luz indicadora
  */
 async function verificarSaudeAPI() {
     if (!badgeSaude || !textoSaude) return;
@@ -59,6 +66,31 @@ async function verificarSaudeAPI() {
 }
 
 /**
+ * SPRINT 6: Obtenção de Token JWT para a Catraca Corporativa
+ */
+async function obterTokenJWT(nick) {
+    let tokenSalvo = sessionStorage.getItem("neon_jwt_token");
+    if (tokenSalvo) return tokenSalvo;
+
+    try {
+        const res = await fetch(`${URL_ATIVA}/api/auth/token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nickname: nick })
+        });
+
+        if (res.ok) {
+            const dados = await res.json();
+            sessionStorage.setItem("neon_jwt_token", dados.token);
+            return dados.token;
+        }
+    } catch (e) {
+        console.warn("⚠️ Aviso: Falha ao solicitar token JWT automático:", e.message);
+    }
+    return null;
+}
+
+/**
  * Renderização de Mensagens com Suporte a Markdown Básico e Confetes
  */
 function adicionarMensagem(remetente, texto) {
@@ -72,7 +104,7 @@ function adicionarMensagem(remetente, texto) {
     div.innerHTML = textoFormatado;
     chatBox.appendChild(div);
 
-    // DESAFIO HACKER: Dispara confetes se a IA celebrar o acerto da charada
+    // Dispara confetes se a IA celebrar o acerto da charada
     if (remetente === "ia") {
         const textoMin = texto.toLowerCase();
         if (textoMin.includes("parabéns") || textoMin.includes("acertou") || textoMin.includes("correto") || textoMin.includes("parabens")) {
@@ -111,11 +143,34 @@ function removerLoading() {
 }
 
 /**
- * Envio de Mensagem para o Agente de IA
+ * SPRINT 6: Eventos de Seleção e Descarte de Documentos (RAG)
+ */
+docUploadInput.addEventListener("change", (e) => {
+    const arquivo = e.target.files[0];
+    if (arquivo) {
+        documentoSelecionado = arquivo;
+        modoRAGAtivo = true;
+        nomeDocAtivo.textContent = `${arquivo.name} (${(arquivo.size / 1024).toFixed(1)} KB)`;
+        containerDocAtivo.style.display = "block";
+        campoTexto.placeholder = `Faça uma pergunta sobre o documento '${arquivo.name}'...`;
+        campoTexto.focus();
+    }
+});
+
+btnRemoverDoc.addEventListener("click", () => {
+    documentoSelecionado = null;
+    modoRAGAtivo = false;
+    docUploadInput.value = "";
+    containerDocAtivo.style.display = "none";
+    campoTexto.placeholder = "Insira comando ou pergunta...";
+});
+
+/**
+ * Envio de Mensagem para o Agente de IA (Alterna entre Chat Comum e RAG Corporativo)
  */
 async function processarEnvioIA() {
     const mensagem = campoTexto.value.trim();
-    const versaoModelo = seletorVersao ? seletorVersao.value : "gemini-3.5-flash";
+    const versaoModelo = seletorVersao ? seletorVersao.value : "gemini-2.5-flash";
     const nick = nicknameInput ? nicknameInput.value.trim() : "";
 
     // Validação obrigatória do Nickname
@@ -136,19 +191,44 @@ async function processarEnvioIA() {
         campoTexto.value = ""; 
         mostrarLoading();
 
-        const respostaServidor = await fetch(`${URL_ATIVA}/api/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-                pergunta: mensagem, 
-                modelo: versaoModelo,
-                nickname: nick
-            })
-        });
+        let respostaServidor;
+
+        // Se houver um documento ativo, envia para a rota protegida com RAG via FormData
+        if (modoRAGAtivo || documentoSelecionado) {
+            const token = await obterTokenJWT(nick);
+            const formData = new FormData();
+            formData.append("pergunta", mensagem);
+            formData.append("nickname", nick);
+            formData.append("modelo", versaoModelo);
+            
+            if (documentoSelecionado) {
+                formData.append("documento", documentoSelecionado);
+            }
+
+            respostaServidor = await fetch(`${URL_ATIVA}/api/chat/documento`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}` // Catraca de segurança JWT
+                },
+                body: formData // Envio em multipart/form-data
+            });
+
+        } else {
+            // Chat normal (sem documento)
+            respostaServidor = await fetch(`${URL_ATIVA}/api/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    pergunta: mensagem, 
+                    modelo: versaoModelo,
+                    nickname: nick
+                })
+            });
+        }
 
         if (!respostaServidor.ok) {
             const dadosErro = await respostaServidor.json().catch(() => ({}));
-            throw new Error(dadosErro.erro || "Falha no link neural.");
+            throw new Error(dadosErro.erro || "Falha na comunicação neural.");
         }
 
         const dados = await respostaServidor.json();
@@ -156,7 +236,13 @@ async function processarEnvioIA() {
         removerLoading();
         adicionarMensagem("ia", dados.resposta);
 
-        // Atualiza a verificação de saúde após a interação bem-sucedida
+        // Se o documento foi processado pela primeira vez, mantemos a indicação de documento ativo
+        if (dados.documentoAtivo && !documentoSelecionado) {
+            modoRAGAtivo = true;
+            nomeDocAtivo.textContent = `${dados.documentoAtivo} (Memória RAG)`;
+            containerDocAtivo.style.display = "block";
+        }
+
         verificarSaudeAPI();
 
     } catch (erro) {
@@ -164,8 +250,6 @@ async function processarEnvioIA() {
         console.error("Falha Crítica:", erro);
         let msgErro = erro.message || "⚠️ FALHA NO NÚCLEO: Link neural interrompido. Verifique o servidor Node.js.";
         adicionarMensagem("ia", `<span style="color: #ff5555">${msgErro}</span>`);
-        
-        // Em caso de erro na comunicação, reavalia a luz de status
         verificarSaudeAPI();
     } finally {
         estaProcessando = false;
@@ -239,21 +323,20 @@ window.addEventListener("click", (e) => {
     if (e.target === modalRanking) modalRanking.style.display = "none";
 });
 
-// Executa o Health Check automático assim que o DOM carregar
+// Executa o Health Check automático ao iniciar a tela
 window.addEventListener("DOMContentLoaded", () => {
     verificarSaudeAPI();
-    // Repete o teste de saúde a cada 30 segundos enquanto a página estiver aberta
     setInterval(verificarSaudeAPI, 30000);
 });
 
-console.log("💠 Sistemas N.E.O.N. 3.5 operando em carga total. Monitoramento de Saúde Ativo.");
+console.log("💠 Sistemas N.E.O.N. 3.6 RAG operando em carga total.");
 
 // ====================================================================
-// ROTINA DE FORMATAÇÃO / LIMPEZA
+// ROTINA DE LIMPEZA E RESET
 // ====================================================================
 const btnLimparMemoria = document.getElementById("btnLimpar");
 btnLimparMemoria.addEventListener("click", async () => {
-    const confirmacao = confirm("⚠️ ALERTA HACKER: Deseja apagar todo o Banco de Dados MongoDb? Isso removerá o histórico e as memórias de XP de todos os jogadores!");
+    const confirmacao = confirm("⚠️ ALERTA HACKER: Deseja apagar todo o Banco de Dados MongoDb? Isso removerá o histórico, os documentos RAG e o XP de todos os jogadores!");
     
     if (confirmacao) {
         try {
@@ -265,7 +348,14 @@ btnLimparMemoria.addEventListener("click", async () => {
             });
 
             if (rotaLimpeza.ok) {
-                chatBox.innerHTML += `<div class="mensagem msg-ia" style="background-color: #330000; border-color: red; color: white;">🔥 FIREWALL BYPASS: Coleção limpa no Atlas. FORMAT realizado!</div>`;
+                // Descarta o documento ativo localmente também
+                documentoSelecionado = null;
+                modoRAGAtivo = false;
+                docUploadInput.value = "";
+                containerDocAtivo.style.display = "none";
+                sessionStorage.removeItem("neon_jwt_token");
+
+                chatBox.innerHTML += `<div class="mensagem msg-ia" style="background-color: #330000; border-color: red; color: white;">🔥 FIREWALL BYPASS: Coleções e Documentos RAG limpos no Atlas. FORMAT realizado!</div>`;
                 chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
             } else {
                 const erroResposta = await rotaLimpeza.json().catch(() => ({}));

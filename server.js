@@ -3,13 +3,64 @@ const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const mongoose = require('mongoose');
+const multer = require('multer');
+const pdfModule = require('pdf-parse');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Memória de contingência caso o MongoDB esteja offline
+// Configuração do Multer para processar arquivos exclusivamente na memória RAM (sem salvar em disco)
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 } // Limite de até 10 MB
+});
+
+// Chave secreta para assinatura dos tokens JWT
+const JWT_SECRET = process.env.JWT_SECRET || 'neon_secret_jwt_corporativo_2026';
+
+// Memórias de contingência caso o MongoDB esteja temporariamente inacessível
 let memoriaContingencia = [];
+let documentosContingencia = {};
+
+// ====================================================================
+// FUNÇÃO UNIVERSAL DE EXTRAÇÃO DE PDF (COMPATÍVEL COM V1 E V2)
+// ====================================================================
+async function extrairTextoPDF(buffer) {
+    try {
+        // 1. Se for a versão 1 do pdf-parse (função direta)
+        if (typeof pdfModule === 'function') {
+            const dados = await pdfModule(buffer);
+            return dados.text;
+        }
+        // 2. Se for exportada como .default
+        if (pdfModule && typeof pdfModule.default === 'function') {
+            const dados = await pdfModule.default(buffer);
+            return dados.text;
+        }
+        // 3. Se for a versão 2 do pdf-parse (Classe PDFParse)
+        if (pdfModule && pdfModule.PDFParse) {
+            const parser = new pdfModule.PDFParse({ data: buffer });
+            const resultado = await parser.getText();
+            return resultado.text;
+        }
+        // 4. Fallback para construtor direto da v2
+        if (typeof pdfModule === 'object') {
+            const Construtor = pdfModule.PDFParse || pdfModule;
+            const parser = new Construtor({ data: buffer });
+            if (typeof parser.getText === 'function') {
+                const resultado = await parser.getText();
+                return resultado.text;
+            }
+        }
+    } catch (err) {
+        console.error("❌ Erro interno ao extrair texto do PDF:", err.message);
+        throw new Error(`Falha na extração do PDF: ${err.message}`);
+    }
+
+    throw new Error("Incompatibilidade na versão da biblioteca pdf-parse instalada.");
+}
 
 // ====================================================================
 // 1. CONEXÃO COM O BANCO DE DADOS MONGODB
@@ -33,10 +84,47 @@ const JogadorSchema = new mongoose.Schema({
 });
 const JogadorModel = mongoose.model('Jogador', JogadorSchema);
 
+// Schema para RAG Persistente (Desafio Hacker)
+const DocumentoSessaoSchema = new mongoose.Schema({
+    nickname: { type: String, required: true, unique: true },
+    nomeArquivo: { type: String, required: true },
+    conteudoTexto: { type: String, required: true },
+    dataUpload: { type: Date, default: Date.now }
+});
+const DocumentoSessaoModel = mongoose.model('DocumentoSessao', DocumentoSessaoSchema);
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ====================================================================
-// 2. FERRAMENTAS DO AGENTE (FUNCTION CALLING)
+// 2. MIDDLEWARE DE SEGURANÇA (CATRACA DIGITAL JWT)
+// ====================================================================
+function verificarTokenJWT(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    
+    // Se o cabeçalho não existir ou não começar com Bearer
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ 
+            sucesso: false, 
+            erro: "401 Unauthorized: Acesso negado. Token JWT ausente no cabeçalho Authorization." 
+        });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    try {
+        const dadosDecodificados = jwt.verify(token, JWT_SECRET);
+        req.usuarioAuth = dadosDecodificados;
+        next();
+    } catch (err) {
+        return res.status(401).json({ 
+            sucesso: false, 
+            erro: "401 Unauthorized: Token JWT inválido ou expirado." 
+        });
+    }
+}
+
+// ====================================================================
+// 3. FERRAMENTAS DO AGENTE (FUNCTION CALLING)
 // ====================================================================
 
 async function adicionarXP(nickname, quantidade) {
@@ -107,18 +195,15 @@ async function converterMoedas(valor, de, para) {
     }
 }
 
-// ====================================================================
-// 3. DECLARAÇÃO DAS FERRAMENTAS / SCHEMAS (JSON SCHEMA)
-// ====================================================================
-
+// Declarações JSON Schema para o Gemini
 const declaracaoXP = {
     name: "adicionarXP",
-    description: "Adiciona ou remove pontos de Experiência (XP) de um usuário baseado no seu nickname. Chame obrigatoriamente se ele acertar a charada (adicione 50 pontos) ou se ele errar feio/desistir (subtraia 10 pontos). Não diga o valor numérico exato na resposta final, apenas informe que os pontos foram computados.",
+    description: "Adiciona ou remove pontos de Experiência (XP) de um usuário baseado no seu nickname.",
     parameters: {
         type: "OBJECT",
         properties: {
-            nickname: { type: "STRING", description: "O nome de login ou apelido do usuário que está jogando." },
-            quantidade: { type: "INTEGER", description: "A quantidade de pontos para somar (ex: 50) ou subtrair (ex: -10)." }
+            nickname: { type: "STRING", description: "O apelido do jogador." },
+            quantidade: { type: "INTEGER", description: "Pontos para somar ou subtrair." }
         },
         required: ["nickname", "quantidade"]
     }
@@ -126,11 +211,11 @@ const declaracaoXP = {
 
 const declaracaoClima = {
     name: "buscarClimaTempoReal",
-    description: "Obtém a temperatura exata e o clima atual de uma cidade. Use sempre que o usuário perguntar sobre o tempo.",
+    description: "Obtém a temperatura exata e o clima atual de uma cidade.",
     parameters: {
         type: "OBJECT",
         properties: {
-            cidade: { type: "STRING", description: "O nome da cidade. Ex: Assis Chateaubriand, Curitiba, Tokyo." }
+            cidade: { type: "STRING", description: "Nome da cidade." }
         },
         required: ["cidade"]
     }
@@ -138,13 +223,13 @@ const declaracaoClima = {
 
 const declaracaoMoeda = {
     name: "converterMoedas",
-    description: "Converte valores financeiros entre moedas internacionais. Use sempre que solicitado.",
+    description: "Converte valores financeiros entre moedas internacionais.",
     parameters: {
         type: "OBJECT",
         properties: {
-            valor: { type: "NUMBER", description: "O valor numérico. Ex: 150." },
-            de: { type: "STRING", description: "Código de 3 letras da moeda de origem. Ex: USD, EUR." },
-            para: { type: "STRING", description: "Código de 3 letras da moeda de destino. Ex: BRL, USD." }
+            valor: { type: "NUMBER", description: "Valor a ser convertido." },
+            de: { type: "STRING", description: "Moeda de origem com 3 letras." },
+            para: { type: "STRING", description: "Moeda de destino com 3 letras." }
         },
         required: ["valor", "de", "para"]
     }
@@ -154,7 +239,7 @@ const declaracaoMoeda = {
 // 4. ROTAS HTTP
 // ====================================================================
 
-// SPRINT 5: Health Check
+// SPRINT 5: Rota de Health Check (Pública)
 app.get('/api/health', (req, res) => {
     const estadoMongo = mongoose.connection.readyState;
     const statusBanco = estadoMongo === 1 ? "conectado" : "desconectado/contingencia";
@@ -168,42 +253,128 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Ranking Global
+// SPRINT 6: Rota para Emissão de Token JWT de Teste (Pública)
+app.post('/api/auth/token', (req, res) => {
+    const { nickname } = req.body;
+    const usuario = nickname ? nickname.trim() : "Operador_Anonimo";
+    
+    // Gera token válido por 24 horas
+    const token = jwt.sign({ nickname: usuario, cargo: "Analista_Corporativo" }, JWT_SECRET, { expiresIn: '24h' });
+    return res.status(200).json({ sucesso: true, token });
+});
+
+// SPRINT 6: Rota RAG com Leitura de Documentos (PROTEGIDA POR JWT)
+app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), async (req, res) => {
+    try {
+        const { pergunta, nickname, modelo } = req.body;
+        if (!pergunta) return res.status(400).json({ erro: "Envie uma pergunta sobre o documento." });
+
+        const nomeOperador = nickname ? nickname.trim() : (req.usuarioAuth?.nickname || "Operador");
+        const modeloAtivo = modelo || "gemini-2.5-flash";
+
+        let textoDocumento = "";
+        let nomeDoArquivo = "";
+
+        // 1. Extração na Memória RAM se um novo arquivo for enviado
+        if (req.file) {
+            nomeDoArquivo = req.file.originalname;
+
+            if (req.file.mimetype === 'application/pdf' || nomeDoArquivo.endsWith('.pdf')) {
+                // Utiliza a função universal compatível com v1 e v2
+                textoDocumento = await extrairTextoPDF(req.file.buffer);
+            } else {
+                // Arquivo TXT comum
+                textoDocumento = req.file.buffer.toString('utf-8');
+            }
+
+            if (!textoDocumento || textoDocumento.trim() === "") {
+                return res.status(400).json({ erro: "Não foi possível extrair texto do documento enviado." });
+            }
+
+            // DESAFIO HACKER: RAG Persistente - Salva o texto no MongoDB associado ao operador
+            if (mongoose.connection.readyState === 1) {
+                await DocumentoSessaoModel.findOneAndUpdate(
+                    { nickname: nomeOperador },
+                    { nomeArquivo: nomeDoArquivo, conteudoTexto: textoDocumento, dataUpload: new Date() },
+                    { upsert: true, new: true }
+                );
+            } else {
+                documentosContingencia[nomeOperador] = { nomeArquivo: nomeDoArquivo, conteudoTexto: textoDocumento };
+            }
+        } else {
+            // DESAFIO HACKER: Se o usuário não enviou arquivo novo, busca o documento já salvo no banco
+            let docExistente = null;
+            if (mongoose.connection.readyState === 1) {
+                docExistente = await DocumentoSessaoModel.findOne({ nickname: nomeOperador }).lean();
+            } else {
+                docExistente = documentosContingencia[nomeOperador];
+            }
+
+            if (!docExistente) {
+                return res.status(400).json({ erro: "Nenhum arquivo enviado e nenhum documento encontrado na memória da sua sessão." });
+            }
+
+            textoDocumento = docExistente.conteudoTexto;
+            nomeDoArquivo = docExistente.nomeArquivo;
+        }
+
+        // 2. Engenharia de Prompt RAG Anti-Alucinação (Grounding Estrito)
+        const promptRAG = `
+Você é um analista de dados corporativo extremamente preciso.
+Abaixo está um documento de referência. Responda à pergunta do usuário baseando-se APENAS no texto fornecido.
+Se a resposta não estiver no texto, diga exatamente: "Desculpe, não encontrei essa informação no documento." NÃO INVENTE DADOS.
+
+DOCUMENTO (${nomeDoArquivo}):
+"""
+${textoDocumento}
+"""
+
+PERGUNTA DO USUÁRIO: ${pergunta}
+`;
+
+        const modelIA = genAI.getGenerativeModel({ model: modeloAtivo });
+        const result = await modelIA.generateContent(promptRAG);
+        const respostaTexto = result.response.text();
+
+        return res.status(200).json({ 
+            sucesso: true, 
+            resposta: respostaTexto,
+            documentoAtivo: nomeDoArquivo,
+            modo: "RAG Corporativo"
+        });
+
+    } catch (erro) {
+        console.error("❌ ERRO NO PROCESSAMENTO RAG:", erro.message);
+        return res.status(500).json({ sucesso: false, erro: `Falha no processamento do documento: ${erro.message}` });
+    }
+});
+
+// Rota de Ranking Global
 app.get('/api/ranking', async (req, res) => {
     try {
         const ranking = await JogadorModel.find().sort({ xp: -1 }).limit(10).lean();
-        
         const rankingGamificado = ranking.map(jogador => {
             let titulo = "Novato";
             if (jogador.xp >= 500) titulo = "Lenda";
             else if (jogador.xp >= 300) titulo = "Mestre";
             else if (jogador.xp >= 100) titulo = "Guerreiro";
-            
-            return {
-                nome: `${titulo}: ${jogador.nome}`,
-                xp: jogador.xp
-            };
+            return { nome: `${titulo}: ${jogador.nome}`, xp: jogador.xp };
         });
-        
         res.status(200).json(rankingGamificado);
     } catch (e) {
         res.status(500).json({ erro: `Falha ao processar ranking: ${e.message}` });
     }
 });
 
-// Rota Principal de Chat
+// Rota de Chat Comum (com Histórico e Function Calling)
 app.post('/api/chat', async (req, res) => {
     try {
-        // CORREÇÃO: Agora recebe 'modelo' dinamicamente do frontend!
         const { pergunta, nickname, modelo } = req.body;
         if (!pergunta) return res.status(400).json({ erro: "Envie uma pergunta." });
 
         const nomeDoJogador = nickname ? nickname.trim() : "Visitante";
-        
-        // CORREÇÃO: Usa o modelo enviado pelo front (gemini-2.5-flash) com fallback ativo!
         const modeloAtivo = modelo || "gemini-2.5-flash"; 
 
-        // Histórico de mensagens
         let docs = [];
         let usandoBanco = false;
 
@@ -223,7 +394,6 @@ app.post('/api/chat', async (req, res) => {
             parts: [{ text: d.parts?.[0]?.text || "" }]
         }));
 
-        // CORREÇÃO: apiVersion v1beta adicionada para suportar Function Calling sem erro 404!
         const modelIA = genAI.getGenerativeModel({ 
             model: modeloAtivo, 
             systemInstruction: `Você é o Mestre do Jogo e Guardião do conhecimento cibernético do SISTEMA N.E.O.N. 3.5.
@@ -237,16 +407,14 @@ app.post('/api/chat', async (req, res) => {
         }, { apiVersion: "v1beta" }); 
 
         const chatSession = modelIA.startChat({ history: historicoSeguro });
-
         let result = await chatSession.sendMessage(pergunta);
         let parts = result.response.candidates?.[0]?.content?.parts;
         let functionCallPart = parts?.find(p => p.functionCall);
 
         while (functionCallPart) {
             const { name, args } = functionCallPart.functionCall;
-            console.log(`🤖 Ferramenta acionada: ${name} com args:`, args);
-
             let functionResult = {};
+
             if (name === "buscarClimaTempoReal") {
                 functionResult = await buscarClimaTempoReal(args.cidade);
             } else if (name === "converterMoedas") {
@@ -257,12 +425,7 @@ app.post('/api/chat', async (req, res) => {
             }
 
             result = await chatSession.sendMessage([
-                {
-                    functionResponse: {
-                        name: name,
-                        response: { result: functionResult }
-                    }
-                }
+                { functionResponse: { name: name, response: { result: functionResult } } }
             ]);
 
             parts = result.response.candidates?.[0]?.content?.parts;
@@ -271,7 +434,6 @@ app.post('/api/chat', async (req, res) => {
 
         const respostaTexto = result.response.text();
 
-        // Salva interação no histórico
         if (usandoBanco && mongoose.connection.readyState === 1) {
             try {
                 await MensagemDbModel.create({ role: "user", parts: [{ text: pergunta }] });
@@ -292,13 +454,15 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// Limpeza
+// Limpeza das coleções (inclui a limpeza dos documentos RAG)
 app.delete('/api/chat/limpar', async (req, res) => {
     try {
         memoriaContingencia = [];
+        documentosContingencia = {};
         if (mongoose.connection.readyState === 1) {
             await MensagemDbModel.deleteMany({});
             await JogadorModel.deleteMany({});
+            await DocumentoSessaoModel.deleteMany({});
         }
         res.json({ sucesso: true });
     } catch (e) { 

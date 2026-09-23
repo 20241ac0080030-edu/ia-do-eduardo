@@ -3,32 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interface Neural Multimodal | Agente N.E.O.N.</title>
+    <title>Interface Neural Corporativa | Agente N.E.O.N. RAG</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Favicon Emoji -->
     <link class="neon-icon" rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💠</text></svg>">
+    <!-- Biblioteca de Confete (Gamificação) -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
     <main class="chat-container">
-        <!-- Cabeçalho -->
+        <!-- Cabeçalho de Comando -->
         <header class="chat-header">
             <div class="brand">
-                <span class="neon-icon">👁️</span>
-                <h1>N.E.O.N. 3.5 VISION</h1>
+                <span class="neon-icon">💠</span>
+                <h1>SISTEMA N.E.O.N. RAG</h1>
             </div>
 
+            <!-- SPRINT 5: Indicador de Saúde da API (Health Check) -->
+            <div id="indicadorSaude" class="health-badge offline" title="Verificando integridade da API...">
+                <span class="health-dot"></span>
+                <span id="textoSaude" class="health-text">Conectando...</span>
+            </div>
+
+            <!-- FASE 1: Identificação do Jogador (Nickname) -->
             <div class="player-identity">
                 <label for="nickname">NICK:</label>
                 <input type="text" id="nickname" placeholder="Seu apelido..." autocomplete="off">
             </div>
 
+            <!-- Seleção de Núcleo (Versões Ativas) -->
             <div class="engine-selector">
                 <label for="seletor-versao">NÚCLEO:</label>
                 <select id="seletor-versao">
-                    <option value="gemini-2.5-flash" selected>NUC 3.5 (Flash - Rápido)</option>
-                    <option value="gemini-2.5-flash-lite">NUC 3.1 (Lite - Econômico)</option>
-                    <option value="gemini-2.5-pro">NUC 3.1 (Pro - Complexo)</option>
+                    <option value="gemini-2.5-flash" selected>NUC 2.5 (Rápido/RAG)</option>
+                    <option value="gemini-2.5-flash-lite">NUC 2.5 Lite</option>
+                    <option value="gemini-2.5-pro">NUC 2.5 Pro</option>
                 </select>
             </div>
         </header>
@@ -36,31 +46,32 @@
         <!-- Área de Conversação -->
         <section id="caixa-chat" class="chat-box">
             <div class="mensagem msg-ia">
-                Sistemas ópticos e neurais ativados. Saudações, Operador. <br>
-                <b>👁️ MODO MULTIMODAL:</b> Agora você pode me enviar imagens e fotos de recibos, produtos ou objetos para análise visual!
+                Sistemas operacionais e analíticos ativados. Saudações, Operador. <br>
+                <b>💼 MODO RAG CORPORATIVO:</b> Clique no ícone de documento <b>📄</b> abaixo para anexar um arquivo PDF ou TXT. Responderei dúvidas com base estritamente no conteúdo fornecido!
             </div>
         </section>
 
-        <!-- Container de Preview da Imagem Selecionada -->
-        <div id="containerPreview" class="container-preview" style="display: none;">
-            <div class="preview-card">
-                <img id="imgPreview" src="" alt="Preview">
-                <button id="btnRemoverImagem" title="Remover Imagem">&times;</button>
+        <!-- SPRINT 6: Barra de Status do Documento RAG Ativo -->
+        <div id="containerDocAtivo" class="container-doc-ativo" style="display: none;">
+            <div class="doc-badge">
+                <span class="icone-doc">📑</span>
+                <span id="nomeDocAtivo" class="nome-doc">arquivo.pdf</span>
+                <button id="btnRemoverDoc" title="Remover documento e voltar ao chat comum">&times;</button>
             </div>
         </div>
 
         <!-- Painel de Input Eletrostático -->
         <footer class="chat-input" style="gap: 8px;">
-            <button id="btnLimpar" title="Destruir Banco de Dados" class="btn-danger">☣️ FORMAT</button>
+            <button id="btnLimpar" title="Destruir Banco de Dados e Documentos" class="btn-danger">☣️ FORMAT</button>
             
-            <!-- Botão e Input de Upload de Imagem -->
-            <label for="inputImagem" class="btn-anexo" title="Anexar Imagem para Análise Visual">📷</label>
-            <input type="file" id="inputImagem" accept="image/*" style="display: none;">
+            <!-- SPRINT 6: Botão e Input de Anexo de Documentos (PDF/TXT) -->
+            <label for="docUpload" class="btn-anexo" title="Anexar Documento PDF/TXT para análise RAG">📄</label>
+            <input type="file" id="docUpload" accept=".pdf, .txt" style="display: none;">
 
             <input 
                 type="text" 
                 id="campoTexto" 
-                placeholder="Insira comando ou pergunta sobre a imagem..." 
+                placeholder="Insira comando ou pergunta sobre o documento..." 
                 autocomplete="off"
             >
             <button id="btnEnviar">ENVIAR</button>
@@ -68,12 +79,14 @@
         </footer>
     </main>
 
-    <!-- Modal do Leaderboard Global -->
+    <!-- Modal do Leaderboard Global (Hall da Fama) -->
     <div id="modalRanking" class="modal-overlay">
         <div class="modal-content">
             <span class="close-btn" id="fecharRanking">&times;</span>
-            <h2>🏆 HALL DA FAMA - N.E.O.N. 3.5</h2>
-            <div class="ranking-tabela" id="rankingTabela"></div>
+            <h2>🏆 HALL DA FAMA - N.E.O.N.</h2>
+            <div class="ranking-tabela" id="rankingTabela">
+                <!-- Conteúdo do Ranking será gerado dinamicamente via JS -->
+            </div>
         </div>
     </div>
 
