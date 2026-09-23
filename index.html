@@ -3,94 +3,169 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interface Neural Corporativa | Agente N.E.O.N. RAG</title>
+    <title>N.E.O.N. — Interface Neural</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Favicon Emoji -->
-    <link class="neon-icon" rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💠</text></svg>">
-    <!-- Biblioteca de Confete (Gamificação) -->
+    <!-- Favicon Minimalista -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%236366f1%22/></svg>">
+    <!-- Biblioteca de Confete -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
-    <main class="chat-container">
-        <!-- Cabeçalho de Comando -->
-        <header class="chat-header">
+    <main class="chat-wrapper">
+        <!-- Barra de Topo Minimalista -->
+        <header class="app-header">
             <div class="brand">
-                <span class="neon-icon">💠</span>
-                <h1>SISTEMA N.E.O.N. RAG</h1>
+                <div class="brand-glyph">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline>
+                        <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1>N.E.O.N.</h1>
+                    <span class="version-tag">3.5 Core</span>
+                </div>
             </div>
 
-            <!-- SPRINT 5: Indicador de Saúde da API (Health Check) -->
-            <div id="indicadorSaude" class="health-badge offline" title="Verificando integridade da API...">
-                <span class="health-dot"></span>
-                <span id="textoSaude" class="health-text">Conectando...</span>
-            </div>
+            <!-- Controles do Topo -->
+            <div class="header-controls">
+                <!-- Indicador de Status da API (Health Check) -->
+                <div id="indicadorSaude" class="status-chip offline" title="Verificando integridade da API...">
+                    <span class="status-pulse"></span>
+                    <span id="textoSaude" class="status-label">Conectando</span>
+                </div>
 
-            <!-- FASE 1: Identificação do Jogador (Nickname) -->
-            <div class="player-identity">
-                <label for="nickname">NICK:</label>
-                <input type="text" id="nickname" placeholder="Seu apelido..." autocomplete="off">
-            </div>
+                <!-- Identificação Opcional -->
+                <div class="user-chip">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <input type="text" id="nickname" placeholder="Operador..." autocomplete="off">
+                </div>
 
-            <!-- Seleção de Núcleo (Versões Ativas) -->
-            <div class="engine-selector">
-                <label for="seletor-versao">NÚCLEO:</label>
-                <select id="seletor-versao">
-                    <option value="gemini-2.5-flash" selected>NUC 2.5 (Rápido/RAG)</option>
-                    <option value="gemini-2.5-flash-lite">NUC 2.5 Lite</option>
-                    <option value="gemini-2.5-pro">NUC 2.5 Pro</option>
-                </select>
+                <!-- Seletor de Modelo -->
+                <div class="select-wrapper">
+                    <select id="seletor-versao">
+                        <option value="gemini-2.5-flash" selected>Flash 2.5</option>
+                        <option value="gemini-2.5-flash-lite">Lite 2.5</option>
+                        <option value="gemini-2.5-pro">Pro 2.5</option>
+                    </select>
+                </div>
+
+                <!-- Botão de Ranking -->
+                <button id="btnRanking" class="btn-icon" title="Ver Ranking Global">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                        <path d="M4 22h16"></path>
+                        <path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-2.34"></path>
+                        <path d="M18 14.66V17c0 .55-.45 1-1 1h-2c-.55 0-1-.45-1-1v-2.34"></path>
+                        <path d="M14 18v3"></path>
+                        <path d="M10 18v3"></path>
+                        <path d="M6 4h12v6a6 6 0 0 1-12 0V4z"></path>
+                    </svg>
+                </button>
             </div>
         </header>
 
         <!-- Área de Conversação -->
-        <section id="caixa-chat" class="chat-box">
+        <section id="caixa-chat" class="chat-viewport">
             <div class="mensagem msg-ia">
-                Sistemas operacionais e analíticos ativados. Saudações, Operador. <br>
-                <b>💼 MODO RAG CORPORATIVO:</b> Clique no ícone de documento <b>📄</b> abaixo para anexar um arquivo PDF ou TXT. Responderei dúvidas com base estritamente no conteúdo fornecido!
+                <div class="msg-header">
+                    <span class="ai-avatar">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"></path>
+                        </svg>
+                    </span>
+                    <span class="ai-label">N.E.O.N. Intelligence</span>
+                </div>
+                <div class="msg-body">
+                    Sistemas integrados e operacionais. Como posso ajudar com suas análises, documentos corporativos ou consultas hoje?
+                </div>
             </div>
         </section>
 
-        <!-- SPRINT 6: Barra de Status do Documento RAG Ativo -->
-        <div id="containerDocAtivo" class="container-doc-ativo" style="display: none;">
-            <div class="doc-badge">
-                <span class="icone-doc">📑</span>
-                <span id="nomeDocAtivo" class="nome-doc">arquivo.pdf</span>
-                <button id="btnRemoverDoc" title="Remover documento e voltar ao chat comum">&times;</button>
+        <!-- Barra Flutuante de Documento Ativo (RAG) -->
+        <div id="containerDocAtivo" class="doc-attachment-bar" style="display: none;">
+            <div class="doc-pill">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                <span id="nomeDocAtivo" class="doc-name">documento.pdf</span>
+                <button id="btnRemoverDoc" class="doc-close-btn" title="Remover documento">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
         </div>
 
-        <!-- Painel de Input Eletrostático -->
-        <footer class="chat-input" style="gap: 8px;">
-            <button id="btnLimpar" title="Destruir Banco de Dados e Documentos" class="btn-danger">☣️ FORMAT</button>
-            
-            <!-- SPRINT 6: Botão e Input de Anexo de Documentos (PDF/TXT) -->
-            <label for="docUpload" class="btn-anexo" title="Anexar Documento PDF/TXT para análise RAG">📄</label>
-            <input type="file" id="docUpload" accept=".pdf, .txt" style="display: none;">
+        <!-- Barra de Comando Flutuante (Command Dock) -->
+        <footer class="dock-container">
+            <div class="dock-inner">
+                <!-- Botão de Reset/Limpar Base -->
+                <button id="btnLimpar" class="dock-btn danger" title="Limpar registros e sessões">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
 
-            <input 
-                type="text" 
-                id="campoTexto" 
-                placeholder="Insira comando ou pergunta sobre o documento..." 
-                autocomplete="off"
-            >
-            <button id="btnEnviar">ENVIAR</button>
-            <button id="btnRanking" title="Ver Ranking Global" class="btn-warning">🏆 RANKING</button>
+                <!-- Botão de Anexo de Documento (RAG) -->
+                <label for="docUpload" class="dock-btn" title="Anexar documento PDF/TXT">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                    </svg>
+                </label>
+                <input type="file" id="docUpload" accept=".pdf, .txt" style="display: none;">
+
+                <!-- Campo de Entrada -->
+                <input 
+                    type="text" 
+                    id="campoTexto" 
+                    placeholder="Envie uma pergunta ou consulte o documento..." 
+                    autocomplete="off"
+                >
+
+                <!-- Botão de Enviar -->
+                <button id="btnEnviar" class="btn-submit" title="Enviar mensagem">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
         </footer>
     </main>
 
-    <!-- Modal do Leaderboard Global (Hall da Fama) -->
+    <!-- Modal do Leaderboard Global -->
     <div id="modalRanking" class="modal-overlay">
-        <div class="modal-content">
-            <span class="close-btn" id="fecharRanking">&times;</span>
-            <h2>🏆 HALL DA FAMA - N.E.O.N.</h2>
-            <div class="ranking-tabela" id="rankingTabela">
-                <!-- Conteúdo do Ranking será gerado dinamicamente via JS -->
+        <div class="modal-card">
+            <header class="modal-top">
+                <div class="modal-title-group">
+                    <div class="modal-badge-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2>Hall da Fama</h2>
+                        <p class="modal-desc">Classificação de operadores e pontuações de sessão</p>
+                    </div>
+                </div>
+                <button id="fecharRanking" class="modal-close-btn">&times;</button>
+            </header>
+            <div class="modal-content-area" id="rankingTabela">
+                <!-- Preenchido via JavaScript -->
             </div>
         </div>
     </div>
 
     <script src="index.js"></script>
-
 </body>
 </html>

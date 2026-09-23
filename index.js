@@ -1,6 +1,6 @@
 /**
  * SISTEMA N.E.O.N. - ENGINE DE INTERFACE (JS) FINAL
- * Versão: 3.6 - Integrado com RAG Corporativo, JWT, Health Check e Gamificação
+ * Versão: 3.7 - Acesso Direto sem Obrigatoriedade de Nome
  */
 
 // 1. MAPEAMENTO DE ELEMENTOS DO DOM
@@ -14,18 +14,18 @@ const modalRanking = document.getElementById("modalRanking");
 const fecharRanking = document.getElementById("fecharRanking");
 const rankingTabela = document.getElementById("rankingTabela");
 
-// Elementos de Health Check (Sprint 5)
+// Elementos de Health Check
 const badgeSaude = document.getElementById("indicadorSaude");
 const textoSaude = document.getElementById("textoSaude");
 
-// SPRINT 6: Elementos de Upload e Controle de Documentos RAG
+// Elementos de Upload e Controle de Documentos RAG
 const docUploadInput = document.getElementById("docUpload");
 const containerDocAtivo = document.getElementById("containerDocAtivo");
 const nomeDocAtivo = document.getElementById("nomeDocAtivo");
 const btnRemoverDoc = document.getElementById("btnRemoverDoc");
 
 let estaProcessando = false;
-let documentoSelecionado = null; // Guarda o arquivo PDF ou TXT em memória
+let documentoSelecionado = null;
 let modoRAGAtivo = false;
 
 // ====================================================================
@@ -35,12 +35,12 @@ const URL_LOCAL = "http://localhost:3000";
 const URL_NUVEM = "https://t1-p1-a5-o-despertar-da-ia.onrender.com";
 
 // --- SELECIONE A URL ATIVA ---
-// Deixe em URL_LOCAL para testar no seu computador ou altere para URL_NUVEM para usar o Render
+// Altere para URL_NUVEM quando for testar na nuvem do Render
 const URL_ATIVA = URL_LOCAL; 
 // ====================================================================
 
 /**
- * FASE 1 (SPRINT 5): Verificação de Saúde da API (Health Check)
+ * Verificação de Saúde da API (Health Check)
  */
 async function verificarSaudeAPI() {
     if (!badgeSaude || !textoSaude) return;
@@ -66,7 +66,7 @@ async function verificarSaudeAPI() {
 }
 
 /**
- * SPRINT 6: Obtenção de Token JWT para a Catraca Corporativa
+ * Obtenção de Token JWT para a Rota Corporativa
  */
 async function obterTokenJWT(nick) {
     let tokenSalvo = sessionStorage.getItem("neon_jwt_token");
@@ -76,7 +76,7 @@ async function obterTokenJWT(nick) {
         const res = await fetch(`${URL_ATIVA}/api/auth/token`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nickname: nick })
+            body: JSON.stringify({ nickname: nick || "Visitante" })
         });
 
         if (res.ok) {
@@ -91,7 +91,7 @@ async function obterTokenJWT(nick) {
 }
 
 /**
- * Renderização de Mensagens com Suporte a Markdown Básico e Confetes
+ * Renderização de Mensagens
  */
 function adicionarMensagem(remetente, texto) {
     const div = document.createElement("div");
@@ -104,7 +104,6 @@ function adicionarMensagem(remetente, texto) {
     div.innerHTML = textoFormatado;
     chatBox.appendChild(div);
 
-    // Dispara confetes se a IA celebrar o acerto da charada
     if (remetente === "ia") {
         const textoMin = texto.toLowerCase();
         if (textoMin.includes("parabéns") || textoMin.includes("acertou") || textoMin.includes("correto") || textoMin.includes("parabens")) {
@@ -143,7 +142,7 @@ function removerLoading() {
 }
 
 /**
- * SPRINT 6: Eventos de Seleção e Descarte de Documentos (RAG)
+ * Eventos de Seleção e Descarte de Documentos (RAG)
  */
 docUploadInput.addEventListener("change", (e) => {
     const arquivo = e.target.files[0];
@@ -151,8 +150,8 @@ docUploadInput.addEventListener("change", (e) => {
         documentoSelecionado = arquivo;
         modoRAGAtivo = true;
         nomeDocAtivo.textContent = `${arquivo.name} (${(arquivo.size / 1024).toFixed(1)} KB)`;
-        containerDocAtivo.style.display = "block";
-        campoTexto.placeholder = `Faça uma pergunta sobre o documento '${arquivo.name}'...`;
+        containerDocAtivo.style.display = "flex";
+        campoTexto.placeholder = `Pergunte sobre o documento '${arquivo.name}'...`;
         campoTexto.focus();
     }
 });
@@ -162,24 +161,20 @@ btnRemoverDoc.addEventListener("click", () => {
     modoRAGAtivo = false;
     docUploadInput.value = "";
     containerDocAtivo.style.display = "none";
-    campoTexto.placeholder = "Insira comando ou pergunta...";
+    campoTexto.placeholder = "Digite uma mensagem ou pergunte sobre o documento...";
 });
 
 /**
- * Envio de Mensagem para o Agente de IA (Alterna entre Chat Comum e RAG Corporativo)
+ * Envio de Mensagem para o Agente de IA (SEM OBRIGATORIEDADE DE NICK)
  */
 async function processarEnvioIA() {
     const mensagem = campoTexto.value.trim();
     const versaoModelo = seletorVersao ? seletorVersao.value : "gemini-2.5-flash";
-    const nick = nicknameInput ? nicknameInput.value.trim() : "";
+    
+    // Se o usuário digitou um nome, usa ele. Se deixou em branco, adota "Visitante"
+    const nick = (nicknameInput && nicknameInput.value.trim()) ? nicknameInput.value.trim() : "Visitante";
 
-    // Validação obrigatória do Nickname
-    if (!nick) {
-        alert("⚠️ ATENÇÃO OPERADOR: Digite o seu NICK (apelido) antes de enviar comandos para participar do Ranking!");
-        nicknameInput.focus();
-        return;
-    }
-
+    // Valida apenas se o usuário digitou uma mensagem ou se o sistema está ocupado
     if (mensagem === "" || estaProcessando) return;
 
     try {
@@ -193,7 +188,7 @@ async function processarEnvioIA() {
 
         let respostaServidor;
 
-        // Se houver um documento ativo, envia para a rota protegida com RAG via FormData
+        // Se houver um documento ativo, envia para a rota RAG via FormData
         if (modoRAGAtivo || documentoSelecionado) {
             const token = await obterTokenJWT(nick);
             const formData = new FormData();
@@ -208,9 +203,9 @@ async function processarEnvioIA() {
             respostaServidor = await fetch(`${URL_ATIVA}/api/chat/documento`, {
                 method: "POST",
                 headers: {
-                    "Authorization": `Bearer ${token}` // Catraca de segurança JWT
+                    "Authorization": `Bearer ${token}`
                 },
-                body: formData // Envio em multipart/form-data
+                body: formData
             });
 
         } else {
@@ -236,11 +231,10 @@ async function processarEnvioIA() {
         removerLoading();
         adicionarMensagem("ia", dados.resposta);
 
-        // Se o documento foi processado pela primeira vez, mantemos a indicação de documento ativo
         if (dados.documentoAtivo && !documentoSelecionado) {
             modoRAGAtivo = true;
             nomeDocAtivo.textContent = `${dados.documentoAtivo} (Memória RAG)`;
-            containerDocAtivo.style.display = "block";
+            containerDocAtivo.style.display = "flex";
         }
 
         verificarSaudeAPI();
@@ -249,7 +243,7 @@ async function processarEnvioIA() {
         removerLoading();
         console.error("Falha Crítica:", erro);
         let msgErro = erro.message || "⚠️ FALHA NO NÚCLEO: Link neural interrompido. Verifique o servidor Node.js.";
-        adicionarMensagem("ia", `<span style="color: #ff5555">${msgErro}</span>`);
+        adicionarMensagem("ia", `<span style="color: #ef4444">${msgErro}</span>`);
         verificarSaudeAPI();
     } finally {
         estaProcessando = false;
@@ -263,7 +257,7 @@ async function processarEnvioIA() {
  * Consulta e Exibição do Ranking Global (Leaderboard)
  */
 async function carregarRankingGlobal() {
-    rankingTabela.innerHTML = `<span style="color: #00f2ff">📡 Estabelecendo conexão de dados com o Ranking...</span>`;
+    rankingTabela.innerHTML = `<span style="color: #6366f1">Carregando classificação...</span>`;
     modalRanking.style.display = "flex";
 
     try {
@@ -273,16 +267,16 @@ async function carregarRankingGlobal() {
         const jogadores = await resposta.json();
         
         if (jogadores.length === 0) {
-            rankingTabela.innerHTML = `<p style="text-align: center; color: #888;">Nenhum jogador registrado no Hall da Fama ainda.</p>`;
+            rankingTabela.innerHTML = `<p style="text-align: center; color: #71717a; padding: 20px 0;">Nenhum operador registrado no ranking ainda.</p>`;
             return;
         }
 
         let htmlTabela = `<table>
             <thead>
                 <tr>
-                    <th style="width: 20%;">RANK</th>
-                    <th style="text-align: left;">JOGADOR / TÍTULO</th>
-                    <th style="text-align: right;">XP</th>
+                    <th style="width: 20%;">Rank</th>
+                    <th style="text-align: left;">Operador</th>
+                    <th style="text-align: right;">Pontos</th>
                 </tr>
             </thead>
             <tbody>`;
@@ -295,9 +289,9 @@ async function carregarRankingGlobal() {
 
             htmlTabela += `
                 <tr>
-                    <td style="text-align: center; font-weight: bold;">${rankMedalha}</td>
-                    <td style="text-align: left; color: #fff;">${jogador.nome}</td>
-                    <td style="text-align: right; color: #e1b12c; font-weight: bold;">${jogador.xp} XP</td>
+                    <td style="font-weight: 600;">${rankMedalha}</td>
+                    <td style="color: #f4f4f5;">${jogador.nome}</td>
+                    <td style="text-align: right; color: #6366f1; font-weight: 600;">${jogador.xp} XP</td>
                 </tr>`;
         });
 
@@ -305,7 +299,7 @@ async function carregarRankingGlobal() {
         rankingTabela.innerHTML = htmlTabela;
 
     } catch (e) {
-        rankingTabela.innerHTML = `<span style="color: #ff5555">❌ Falha ao carregar ranking: ${e.message}</span>`;
+        rankingTabela.innerHTML = `<span style="color: #ef4444">Falha ao carregar ranking: ${e.message}</span>`;
     }
 }
 
@@ -323,24 +317,22 @@ window.addEventListener("click", (e) => {
     if (e.target === modalRanking) modalRanking.style.display = "none";
 });
 
-// Executa o Health Check automático ao iniciar a tela
+// Executa o Health Check automático
 window.addEventListener("DOMContentLoaded", () => {
     verificarSaudeAPI();
     setInterval(verificarSaudeAPI, 30000);
 });
-
-console.log("💠 Sistemas N.E.O.N. 3.6 RAG operando em carga total.");
 
 // ====================================================================
 // ROTINA DE LIMPEZA E RESET
 // ====================================================================
 const btnLimparMemoria = document.getElementById("btnLimpar");
 btnLimparMemoria.addEventListener("click", async () => {
-    const confirmacao = confirm("⚠️ ALERTA HACKER: Deseja apagar todo o Banco de Dados MongoDb? Isso removerá o histórico, os documentos RAG e o XP de todos os jogadores!");
+    const confirmacao = confirm("Deseja apagar os dados do MongoDB e o histórico da sessão?");
     
     if (confirmacao) {
         try {
-            adicionarMensagem("ia", `<span style="color: #ffcc00">⚠️ Solicitando limpeza do MongoDB na Cloud...</span>`);
+            adicionarMensagem("ia", `<span style="color: #f59e0b">Limpando registros da base de dados...</span>`);
             btnLimparMemoria.disabled = true;
 
             const rotaLimpeza = await fetch(`${URL_ATIVA}/api/chat/limpar`, {
@@ -348,21 +340,20 @@ btnLimparMemoria.addEventListener("click", async () => {
             });
 
             if (rotaLimpeza.ok) {
-                // Descarta o documento ativo localmente também
                 documentoSelecionado = null;
                 modoRAGAtivo = false;
                 docUploadInput.value = "";
                 containerDocAtivo.style.display = "none";
                 sessionStorage.removeItem("neon_jwt_token");
 
-                chatBox.innerHTML += `<div class="mensagem msg-ia" style="background-color: #330000; border-color: red; color: white;">🔥 FIREWALL BYPASS: Coleções e Documentos RAG limpos no Atlas. FORMAT realizado!</div>`;
+                chatBox.innerHTML += `<div class="mensagem msg-ia" style="color: #10b981;">Base de dados e memórias restauradas com sucesso.</div>`;
                 chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
             } else {
                 const erroResposta = await rotaLimpeza.json().catch(() => ({}));
                 throw new Error(erroResposta.erro || "Erro HTTP na rota de limpeza.");
             }
         } catch (erroDelete) {
-            adicionarMensagem("ia", `<span style="color: #ff5555">⚠️ FORMAT FALHOU: ${erroDelete.message}</span>`);
+            adicionarMensagem("ia", `<span style="color: #ef4444">Falha na limpeza: ${erroDelete.message}</span>`);
         } finally {
             btnLimparMemoria.disabled = false;
             campoTexto.focus();

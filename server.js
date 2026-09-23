@@ -11,16 +11,16 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Configuração do Multer para processar arquivos exclusivamente na memória RAM (sem salvar em disco)
+// Configuração do Multer para processamento estritamente na memória RAM
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 } // Limite de até 10 MB
+    limits: { fileSize: 10 * 1024 * 1024 } // Aceita arquivos de até 10 MB
 });
 
 // Chave secreta para assinatura dos tokens JWT
 const JWT_SECRET = process.env.JWT_SECRET || 'neon_secret_jwt_corporativo_2026';
 
-// Memórias de contingência caso o MongoDB esteja temporariamente inacessível
+// Memórias de contingência caso o MongoDB esteja temporariamente offline
 let memoriaContingencia = [];
 let documentosContingencia = {};
 
@@ -101,7 +101,6 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 function verificarTokenJWT(req, res, next) {
     const authHeader = req.headers['authorization'];
     
-    // Se o cabeçalho não existir ou não começar com Bearer
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ 
             sucesso: false, 
@@ -253,12 +252,11 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// SPRINT 6: Rota para Emissão de Token JWT de Teste (Pública)
+// SPRINT 6: Emissão de Token JWT de Teste (Pública)
 app.post('/api/auth/token', (req, res) => {
     const { nickname } = req.body;
-    const usuario = nickname ? nickname.trim() : "Operador_Anonimo";
+    const usuario = nickname ? nickname.trim() : "Visitante";
     
-    // Gera token válido por 24 horas
     const token = jwt.sign({ nickname: usuario, cargo: "Analista_Corporativo" }, JWT_SECRET, { expiresIn: '24h' });
     return res.status(200).json({ sucesso: true, token });
 });
@@ -269,7 +267,7 @@ app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), a
         const { pergunta, nickname, modelo } = req.body;
         if (!pergunta) return res.status(400).json({ erro: "Envie uma pergunta sobre o documento." });
 
-        const nomeOperador = nickname ? nickname.trim() : (req.usuarioAuth?.nickname || "Operador");
+        const nomeOperador = nickname ? nickname.trim() : (req.usuarioAuth?.nickname || "Visitante");
         const modeloAtivo = modelo || "gemini-2.5-flash";
 
         let textoDocumento = "";
@@ -280,15 +278,21 @@ app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), a
             nomeDoArquivo = req.file.originalname;
 
             if (req.file.mimetype === 'application/pdf' || nomeDoArquivo.endsWith('.pdf')) {
-                // Utiliza a função universal compatível com v1 e v2
                 textoDocumento = await extrairTextoPDF(req.file.buffer);
             } else {
-                // Arquivo TXT comum
                 textoDocumento = req.file.buffer.toString('utf-8');
             }
 
             if (!textoDocumento || textoDocumento.trim() === "") {
                 return res.status(400).json({ erro: "Não foi possível extrair texto do documento enviado." });
+            }
+
+            // BLINDAGEM DE COTA GRATUITA (Anti-Erro 429):
+            // Limita o texto em até 150.000 caracteres (~35.000 palavras),
+            // garantindo que não ultrapasse o limite de 250k tokens por minuto da conta gratuita
+            if (textoDocumento.length > 150000) {
+                console.warn("⚠️ Documento volumoso detectado. Truncando para respeitar a cota gratuita do Gemini.");
+                textoDocumento = textoDocumento.slice(0, 150000) + "\n\n[...Texto truncado para respeitar o limite de 250.000 tokens por minuto da cota gratuita...]";
             }
 
             // DESAFIO HACKER: RAG Persistente - Salva o texto no MongoDB associado ao operador
@@ -302,7 +306,7 @@ app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), a
                 documentosContingencia[nomeOperador] = { nomeArquivo: nomeDoArquivo, conteudoTexto: textoDocumento };
             }
         } else {
-            // DESAFIO HACKER: Se o usuário não enviou arquivo novo, busca o documento já salvo no banco
+            // DESAFIO HACKER: Recupera o documento salvo anteriormente na sessão
             let docExistente = null;
             if (mongoose.connection.readyState === 1) {
                 docExistente = await DocumentoSessaoModel.findOne({ nickname: nomeOperador }).lean();
@@ -345,7 +349,14 @@ PERGUNTA DO USUÁRIO: ${pergunta}
 
     } catch (erro) {
         console.error("❌ ERRO NO PROCESSAMENTO RAG:", erro.message);
-        return res.status(500).json({ sucesso: false, erro: `Falha no processamento do documento: ${erro.message}` });
+        
+        let mensagemErro = erro.message;
+        // Tratamento amigável para o limite da cota gratuita da Google
+        if (erro.message.includes("429") || erro.message.includes("Quota exceeded")) {
+            mensagemErro = "Limite de leitura da conta gratuita atingido (Erro 429). O documento é extenso demais para a cota de 250.000 tokens por minuto. Aguarde 1 minuto e envie uma pergunta mais direta ou use um documento menor.";
+        }
+        
+        return res.status(500).json({ sucesso: false, erro: mensagemErro });
     }
 });
 
