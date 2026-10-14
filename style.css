@@ -1,6 +1,6 @@
 /* ============================================================
-   N.E.O.N. ARCHITECTURE UI — ELEVATED MINIMALISM
-   Referências: Linear, Raycast, Vercel & Claude
+   N.E.O.N. ARCHITECTURE UI — REAL-TIME MINIMALISM 2.0
+   Design System para Comunicação em Tempo Real com WebSockets
    ============================================================ */
 
 :root {
@@ -74,7 +74,7 @@ body {
 /* 2. JANELA PRINCIPAL */
 .chat-wrapper {
     width: 95%;
-    max-width: 660px;
+    max-width: 680px;
     height: 88vh;
     background: var(--surface-card);
     border-radius: var(--radius-lg);
@@ -97,6 +97,7 @@ body {
     justify-content: space-between;
     align-items: center;
     z-index: 10;
+    gap: 8px;
 }
 
 .brand {
@@ -146,12 +147,12 @@ body {
 .status-chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 9px;
+    gap: 5px;
+    padding: 3px 8px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-pill);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
     transition: var(--ease-spring);
 }
@@ -172,7 +173,6 @@ body {
 .status-chip.online .status-pulse {
     background-color: var(--status-emerald);
     box-shadow: 0 0 6px var(--status-emerald);
-    animation: breathing 2.5s infinite ease-in-out;
 }
 
 .status-chip.offline {
@@ -185,12 +185,35 @@ body {
     background-color: var(--status-rose);
 }
 
-@keyframes breathing {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.9); }
+/* SPRINT 7: CHIP DE USUÁRIOS ONLINE NA SALA */
+.online-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--status-emerald);
 }
 
-/* CHIP DE IDENTIFICAÇÃO */
+.online-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--status-emerald);
+    box-shadow: 0 0 6px var(--status-emerald);
+    animation: breathing 2s infinite ease-in-out;
+}
+
+@keyframes breathing {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+/* CHIP DE IDENTIFICAÇÃO DO OPERADOR */
 .user-chip {
     display: flex;
     align-items: center;
@@ -216,7 +239,7 @@ body {
     color: var(--text-faint);
 }
 
-/* SELETOR MINIMALISTA */
+/* SELETOR DE MODELO */
 .select-wrapper select {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-hairline);
@@ -262,7 +285,7 @@ body {
     padding: 24px 22px 105px;
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 18px;
 }
 
 .chat-viewport::-webkit-scrollbar {
@@ -278,12 +301,12 @@ body {
     background: rgba(255, 255, 255, 0.16);
 }
 
-/* 5. MENSAGENS (EDITORIAL & CLEAN) */
+/* 5. MENSAGENS NA SALA PÚBLICA */
 .mensagem {
-    max-width: 84%;
+    max-width: 82%;
     font-size: 0.93rem;
-    line-height: 1.7;
-    animation: messageEntry 0.25s var(--ease-spring);
+    line-height: 1.65;
+    animation: messageEntry 0.22s var(--ease-spring);
     word-break: break-word;
 }
 
@@ -292,29 +315,54 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Bolha do Usuário */
+.msg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.author-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #a5b4fc;
+    letter-spacing: -0.01em;
+}
+
+.msg-time {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-left: auto;
+}
+
+/* Mensagem Própria (Alinhada à Direita) */
 .msg-usuario {
     align-self: flex-end;
-    background: linear-gradient(180deg, rgba(35, 35, 42, 0.8), rgba(25, 25, 30, 0.8));
+    background: linear-gradient(180deg, rgba(35, 35, 42, 0.85), rgba(25, 25, 30, 0.85));
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: #fafafa;
     padding: 10px 16px;
     border-radius: 16px 16px 4px 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Mensagem de Outro Usuário na Sala (Alinhada à Esquerda) */
+.msg-outro-usuario {
+    align-self: flex-start;
+    background: rgba(22, 22, 27, 0.7);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-body);
+    padding: 10px 16px;
+    border-radius: 16px 16px 16px 4px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-/* Mensagem da IA (Unboxed) */
+/* Mensagem do Moderador de IA (Destaque Aberto) */
 .msg-ia {
     align-self: flex-start;
     color: var(--text-body);
     width: 100%;
-}
-
-.msg-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
+    padding: 6px 0;
 }
 
 .ai-avatar {
@@ -333,7 +381,6 @@ body {
     font-size: 11px;
     font-weight: 600;
     color: #c7d2fe;
-    letter-spacing: -0.01em;
 }
 
 .msg-body b, .msg-body strong {
@@ -341,7 +388,25 @@ body {
     font-weight: 600;
 }
 
-/* 6. BARRA FLUTUANTE DE DOCUMENTO ATIVO (RAG) */
+/* 6. SPRINT 7: INDICADOR DE DIGITAÇÃO FLUTUANTE */
+.typing-indicator-bar {
+    position: absolute;
+    bottom: 74px;
+    left: 28px;
+    font-size: 11px;
+    font-style: italic;
+    color: var(--text-muted);
+    background: rgba(18, 18, 22, 0.8);
+    padding: 3px 12px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-hairline);
+    backdrop-filter: blur(8px);
+    animation: messageEntry 0.2s var(--ease-spring);
+    z-index: 6;
+    pointer-events: none;
+}
+
+/* 7. BARRA FLUTUANTE DE DOCUMENTO ATIVO (RAG) */
 .doc-attachment-bar {
     position: absolute;
     bottom: 76px;
@@ -391,7 +456,7 @@ body {
     background: rgba(244, 63, 94, 0.15);
 }
 
-/* 7. DOCK DE ENTRADA (RAYCAST / SPOTLIGHT STYLE) */
+/* 8. DOCK DE ENTRADA (RAYCAST / SPOTLIGHT STYLE) */
 .dock-container {
     position: absolute;
     bottom: 18px;
@@ -480,26 +545,6 @@ body {
     background: var(--accent-hover);
     transform: scale(1.06);
     box-shadow: 0 0 16px rgba(99, 102, 241, 0.5);
-}
-
-.btn-submit:disabled {
-    opacity: 0.25;
-    cursor: not-allowed;
-    transform: none;
-}
-
-/* Indicador de Digitação (Pulso Suave) */
-.pulso {
-    animation: gentlePulse 1.2s infinite ease-in-out;
-    display: inline-block;
-    color: var(--accent);
-    font-size: 18px;
-    line-height: 10px;
-}
-
-@keyframes gentlePulse {
-    0%, 100% { opacity: 0.2; transform: translateY(0); }
-    50% { opacity: 1; transform: translateY(-3px); }
 }
 
 /* ============================================================

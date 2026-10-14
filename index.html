@@ -3,17 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>N.E.O.N. — Interface Neural</title>
+    <title>N.E.O.N. — Sala Pública em Tempo Real</title>
     <link rel="stylesheet" href="style.css">
+    
     <!-- Favicon Minimalista -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%236366f1%22/></svg>">
+    
+    <!-- SPRINT 7: Biblioteca Oficial do Cliente Socket.io -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    
     <!-- Biblioteca de Confete -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
     <main class="chat-wrapper">
-        <!-- Barra de Topo Minimalista -->
+        <!-- Barra Superior Minimalista -->
         <header class="app-header">
             <div class="brand">
                 <div class="brand-glyph">
@@ -25,19 +30,25 @@
                 </div>
                 <div class="brand-text">
                     <h1>N.E.O.N.</h1>
-                    <span class="version-tag">3.5 Core</span>
+                    <span class="version-tag">Real-Time</span>
                 </div>
             </div>
 
             <!-- Controles do Topo -->
             <div class="header-controls">
-                <!-- Indicador de Status da API (Health Check) -->
+                <!-- Status da API (Health Check) -->
                 <div id="indicadorSaude" class="status-chip offline" title="Verificando integridade da API...">
                     <span class="status-pulse"></span>
-                    <span id="textoSaude" class="status-label">Conectando</span>
+                    <span id="textoSaude" class="status-label">API</span>
                 </div>
 
-                <!-- Identificação Opcional -->
+                <!-- DESAFIO HACKER 1: Contador de Usuários Online na Sala -->
+                <div id="contadorOnline" class="online-chip" title="Usuários conectados em tempo real na sala">
+                    <span class="online-dot"></span>
+                    <span id="textoOnline">1 online</span>
+                </div>
+
+                <!-- Identificação do Usuário -->
                 <div class="user-chip">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -71,7 +82,7 @@
             </div>
         </header>
 
-        <!-- Área de Conversação -->
+        <!-- Área de Conversação Pública -->
         <section id="caixa-chat" class="chat-viewport">
             <div class="mensagem msg-ia">
                 <div class="msg-header">
@@ -80,13 +91,17 @@
                             <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"></path>
                         </svg>
                     </span>
-                    <span class="ai-label">N.E.O.N. Intelligence</span>
+                    <span class="ai-label">🤖 Moderador N.E.O.N.</span>
                 </div>
                 <div class="msg-body">
-                    Sistemas integrados e operacionais. Como posso ajudar com suas análises, documentos corporativos ou consultas hoje?
+                    Sala pública em tempo real conectada via WebSockets. <br>
+                    Converse livremente com os outros membros. Para invocar a inteligência artificial, mencione <b>@gemini</b> ou <b>@neon</b> na sua mensagem!
                 </div>
             </div>
         </section>
+
+        <!-- DESAFIO HACKER 2: Indicador de Digitação Flutuante -->
+        <div id="avisoDigitando" class="typing-indicator-bar" style="display: none;"></div>
 
         <!-- Barra Flutuante de Documento Ativo (RAG) -->
         <div id="containerDocAtivo" class="doc-attachment-bar" style="display: none;">
@@ -105,7 +120,7 @@
             </div>
         </div>
 
-        <!-- Barra de Comando Flutuante (Command Dock) -->
+        <!-- Barra de Comando Flutuante (Input Dock) -->
         <footer class="dock-container">
             <div class="dock-inner">
                 <!-- Botão de Reset/Limpar Base -->
@@ -128,7 +143,7 @@
                 <input 
                     type="text" 
                     id="campoTexto" 
-                    placeholder="Envie uma pergunta ou consulte o documento..." 
+                    placeholder="Mande uma mensagem na sala ou chame @gemini..." 
                     autocomplete="off"
                 >
 
@@ -160,9 +175,7 @@
                 </div>
                 <button id="fecharRanking" class="modal-close-btn">&times;</button>
             </header>
-            <div class="modal-content-area" id="rankingTabela">
-                <!-- Preenchido via JavaScript -->
-            </div>
+            <div class="modal-content-area" id="rankingTabela"></div>
         </div>
     </div>
 

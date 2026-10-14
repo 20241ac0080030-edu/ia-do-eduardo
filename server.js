@@ -1,6 +1,8 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const { Server } = require('socket.io');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const mongoose = require('mongoose');
 const multer = require('multer');
@@ -11,10 +13,19 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Criação do Servidor HTTP nativo acoplado ao Express e ao Socket.io
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+
 // Configuração do Multer para processamento estritamente na memória RAM
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 } // Aceita arquivos de até 10 MB
+    limits: { fileSize: 10 * 1024 * 1024 } // Até 10 MB
 });
 
 // Chave secreta para assinatura dos tokens JWT
@@ -29,23 +40,19 @@ let documentosContingencia = {};
 // ====================================================================
 async function extrairTextoPDF(buffer) {
     try {
-        // 1. Se for a versão 1 do pdf-parse (função direta)
         if (typeof pdfModule === 'function') {
             const dados = await pdfModule(buffer);
             return dados.text;
         }
-        // 2. Se for exportada como .default
         if (pdfModule && typeof pdfModule.default === 'function') {
             const dados = await pdfModule.default(buffer);
             return dados.text;
         }
-        // 3. Se for a versão 2 do pdf-parse (Classe PDFParse)
         if (pdfModule && pdfModule.PDFParse) {
             const parser = new pdfModule.PDFParse({ data: buffer });
             const resultado = await parser.getText();
             return resultado.text;
         }
-        // 4. Fallback para construtor direto da v2
         if (typeof pdfModule === 'object') {
             const Construtor = pdfModule.PDFParse || pdfModule;
             const parser = new Construtor({ data: buffer });
@@ -58,7 +65,6 @@ async function extrairTextoPDF(buffer) {
         console.error("❌ Erro interno ao extrair texto do PDF:", err.message);
         throw new Error(`Falha na extração do PDF: ${err.message}`);
     }
-
     throw new Error("Incompatibilidade na versão da biblioteca pdf-parse instalada.");
 }
 
@@ -84,7 +90,7 @@ const JogadorSchema = new mongoose.Schema({
 });
 const JogadorModel = mongoose.model('Jogador', JogadorSchema);
 
-// Schema para RAG Persistente (Desafio Hacker)
+// Schema para RAG Persistente
 const DocumentoSessaoSchema = new mongoose.Schema({
     nickname: { type: String, required: true, unique: true },
     nomeArquivo: { type: String, required: true },
@@ -95,21 +101,32 @@ const DocumentoSessaoModel = mongoose.model('DocumentoSessao', DocumentoSessaoSc
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// Helper para salvar mensagens no histórico (MongoDB com fallback em RAM)
+async function salvarMensagemHistorico(role, texto) {
+    if (mongoose.connection.readyState === 1) {
+        try {
+            await MensagemDbModel.create({ role, parts: [{ text }] });
+        } catch (e) {
+            memoriaContingencia.push({ role, parts: [{ text }] });
+        }
+    } else {
+        memoriaContingencia.push({ role, parts: [{ text }] });
+    }
+}
+
 // ====================================================================
-// 2. MIDDLEWARE DE SEGURANÇA (CATRACA DIGITAL JWT)
+// 2. MIDDLEWARE DE SEGURANÇA HTTP (CATRACA JWT PARA ROTAS REST)
 // ====================================================================
 function verificarTokenJWT(req, res, next) {
     const authHeader = req.headers['authorization'];
-    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({ 
             sucesso: false, 
-            erro: "401 Unauthorized: Acesso negado. Token JWT ausente no cabeçalho Authorization." 
+            erro: "401 Unauthorized: Acesso negado. Token JWT ausente." 
         });
     }
 
     const token = authHeader.split(' ')[1];
-
     try {
         const dadosDecodificados = jwt.verify(token, JWT_SECRET);
         req.usuarioAuth = dadosDecodificados;
@@ -123,9 +140,29 @@ function verificarTokenJWT(req, res, next) {
 }
 
 // ====================================================================
-// 3. FERRAMENTAS DO AGENTE (FUNCTION CALLING)
+// 3. SEGURANÇA NO WEBSOCKET (FASE 5: CRITÉRIO OBRIGATÓRIO DO SOCKET)
 // ====================================================================
+io.use((socket, next) => {
+    // Captura o token enviado no objeto auth do handshake do WebSocket
+    const token = socket.handshake.auth?.token;
 
+    if (!token) {
+        return next(new Error("401 Unauthorized: Token JWT ausente no handshake do WebSocket"));
+    }
+
+    try {
+        const decodificado = jwt.verify(token, JWT_SECRET);
+        // Anexa os dados do usuário autenticado no próprio socket
+        socket.usuario = decodificado;
+        next();
+    } catch (err) {
+        return next(new Error("401 Unauthorized: Token JWT inválido ou expirado no WebSocket"));
+    }
+});
+
+// ====================================================================
+// 4. FERRAMENTAS DO AGENTE (FUNCTION CALLING)
+// ====================================================================
 async function adicionarXP(nickname, quantidade) {
     try {
         const nomeFormatado = nickname.trim();
@@ -194,7 +231,6 @@ async function converterMoedas(valor, de, para) {
     }
 }
 
-// Declarações JSON Schema para o Gemini
 const declaracaoXP = {
     name: "adicionarXP",
     description: "Adiciona ou remove pontos de Experiência (XP) de um usuário baseado no seu nickname.",
@@ -213,9 +249,7 @@ const declaracaoClima = {
     description: "Obtém a temperatura exata e o clima atual de uma cidade.",
     parameters: {
         type: "OBJECT",
-        properties: {
-            cidade: { type: "STRING", description: "Nome da cidade." }
-        },
+        properties: { cidade: { type: "STRING", description: "Nome da cidade." } },
         required: ["cidade"]
     }
 };
@@ -235,10 +269,10 @@ const declaracaoMoeda = {
 };
 
 // ====================================================================
-// 4. ROTAS HTTP
+// 5. ROTAS REST / HTTP
 // ====================================================================
 
-// SPRINT 5: Rota de Health Check (Pública)
+// Health Check
 app.get('/api/health', (req, res) => {
     const estadoMongo = mongoose.connection.readyState;
     const statusBanco = estadoMongo === 1 ? "conectado" : "desconectado/contingencia";
@@ -252,16 +286,16 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// SPRINT 6: Emissão de Token JWT de Teste (Pública)
+// Emissão de Token JWT
 app.post('/api/auth/token', (req, res) => {
     const { nickname } = req.body;
     const usuario = nickname ? nickname.trim() : "Visitante";
     
-    const token = jwt.sign({ nickname: usuario, cargo: "Analista_Corporativo" }, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign({ nickname: usuario, cargo: "Operador_RealTime" }, JWT_SECRET, { expiresIn: '24h' });
     return res.status(200).json({ sucesso: true, token });
 });
 
-// SPRINT 6: Rota RAG com Leitura de Documentos (PROTEGIDA POR JWT)
+// RAG com Documentos (Protegida com JWT)
 app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), async (req, res) => {
     try {
         const { pergunta, nickname, modelo } = req.body;
@@ -273,7 +307,6 @@ app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), a
         let textoDocumento = "";
         let nomeDoArquivo = "";
 
-        // 1. Extração na Memória RAM se um novo arquivo for enviado
         if (req.file) {
             nomeDoArquivo = req.file.originalname;
 
@@ -287,15 +320,10 @@ app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), a
                 return res.status(400).json({ erro: "Não foi possível extrair texto do documento enviado." });
             }
 
-            // BLINDAGEM DE COTA GRATUITA (Anti-Erro 429):
-            // Limita o texto em até 150.000 caracteres (~35.000 palavras),
-            // garantindo que não ultrapasse o limite de 250k tokens por minuto da conta gratuita
             if (textoDocumento.length > 150000) {
-                console.warn("⚠️ Documento volumoso detectado. Truncando para respeitar a cota gratuita do Gemini.");
-                textoDocumento = textoDocumento.slice(0, 150000) + "\n\n[...Texto truncado para respeitar o limite de 250.000 tokens por minuto da cota gratuita...]";
+                textoDocumento = textoDocumento.slice(0, 150000) + "\n\n[...Texto truncado para respeitar limites da cota gratuita...]";
             }
 
-            // DESAFIO HACKER: RAG Persistente - Salva o texto no MongoDB associado ao operador
             if (mongoose.connection.readyState === 1) {
                 await DocumentoSessaoModel.findOneAndUpdate(
                     { nickname: nomeOperador },
@@ -306,7 +334,6 @@ app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), a
                 documentosContingencia[nomeOperador] = { nomeArquivo: nomeDoArquivo, conteudoTexto: textoDocumento };
             }
         } else {
-            // DESAFIO HACKER: Recupera o documento salvo anteriormente na sessão
             let docExistente = null;
             if (mongoose.connection.readyState === 1) {
                 docExistente = await DocumentoSessaoModel.findOne({ nickname: nomeOperador }).lean();
@@ -315,25 +342,24 @@ app.post('/api/chat/documento', verificarTokenJWT, upload.single('documento'), a
             }
 
             if (!docExistente) {
-                return res.status(400).json({ erro: "Nenhum arquivo enviado e nenhum documento encontrado na memória da sua sessão." });
+                return res.status(400).json({ erro: "Nenhum documento encontrado na sessão." });
             }
 
             textoDocumento = docExistente.conteudoTexto;
             nomeDoArquivo = docExistente.nomeArquivo;
         }
 
-        // 2. Engenharia de Prompt RAG Anti-Alucinação (Grounding Estrito)
         const promptRAG = `
-Você é um analista de dados corporativo extremamente preciso.
-Abaixo está um documento de referência. Responda à pergunta do usuário baseando-se APENAS no texto fornecido.
-Se a resposta não estiver no texto, diga exatamente: "Desculpe, não encontrei essa informação no documento." NÃO INVENTE DADOS.
+Você é um analista corporativo extremamente preciso.
+Responda à pergunta do usuário baseando-se APENAS no documento abaixo.
+Se a resposta não estiver nele, responda estritamente: "Desculpe, não encontrei essa informação no documento." NÃO INVENTE DADOS.
 
 DOCUMENTO (${nomeDoArquivo}):
 """
 ${textoDocumento}
 """
 
-PERGUNTA DO USUÁRIO: ${pergunta}
+PERGUNTA: ${pergunta}
 `;
 
         const modelIA = genAI.getGenerativeModel({ model: modeloAtivo });
@@ -348,19 +374,15 @@ PERGUNTA DO USUÁRIO: ${pergunta}
         });
 
     } catch (erro) {
-        console.error("❌ ERRO NO PROCESSAMENTO RAG:", erro.message);
-        
         let mensagemErro = erro.message;
-        // Tratamento amigável para o limite da cota gratuita da Google
         if (erro.message.includes("429") || erro.message.includes("Quota exceeded")) {
-            mensagemErro = "Limite de leitura da conta gratuita atingido (Erro 429). O documento é extenso demais para a cota de 250.000 tokens por minuto. Aguarde 1 minuto e envie uma pergunta mais direta ou use um documento menor.";
+            mensagemErro = "Limite de cota temporariamente excedido. Aguarde 1 minuto.";
         }
-        
         return res.status(500).json({ sucesso: false, erro: mensagemErro });
     }
 });
 
-// Rota de Ranking Global
+// Ranking Global
 app.get('/api/ranking', async (req, res) => {
     try {
         const ranking = await JogadorModel.find().sort({ xp: -1 }).limit(10).lean();
@@ -377,7 +399,7 @@ app.get('/api/ranking', async (req, res) => {
     }
 });
 
-// Rota de Chat Comum (com Histórico e Function Calling)
+// Rota de Chat REST de Contingência (Mantida ativa)
 app.post('/api/chat', async (req, res) => {
     try {
         const { pergunta, nickname, modelo } = req.body;
@@ -386,86 +408,26 @@ app.post('/api/chat', async (req, res) => {
         const nomeDoJogador = nickname ? nickname.trim() : "Visitante";
         const modeloAtivo = modelo || "gemini-2.5-flash"; 
 
-        let docs = [];
-        let usandoBanco = false;
-
-        if (mongoose.connection.readyState === 1) {
-            try {
-                docs = await MensagemDbModel.find().sort({ dataHora: 1 }).limit(10).lean();
-                usandoBanco = true;
-            } catch (dbErr) {
-                docs = memoriaContingencia.slice(-10);
-            }
-        } else {
-            docs = memoriaContingencia.slice(-10);
-        }
-
-        const historicoSeguro = docs.map(d => ({
-            role: d.role === "model" ? "model" : "user",
-            parts: [{ text: d.parts?.[0]?.text || "" }]
-        }));
-
         const modelIA = genAI.getGenerativeModel({ 
             model: modeloAtivo, 
-            systemInstruction: `Você é o Mestre do Jogo e Guardião do conhecimento cibernético do SISTEMA N.E.O.N. 3.5.
-            Trate o usuário pelo apelido informado: ${nomeDoJogador}.
-            Regra do Jogo: Proponha desafios e charadas intrigantes sobre tecnologia, hacking e computação. 
-            Se o usuário responder acertando a charada de forma justa, você DEVE obrigatoriamente chamar a função 'adicionarXP' passando o nickname '${nomeDoJogador}' e 50 pontos de quantidade.
-            Se ele pedir a resposta, errar muito ou desistir, você deve chamar a função 'adicionarXP' e retirar 10 pontos (passando -10).
-            Nunca revele no texto final a numeração exata de XP do usuário, apenas o parabenize ou lamente os pontos alterados. 
-            Além disso, você continua capaz de executar buscas de clima e moedas quando o usuário solicitar.`,
+            systemInstruction: `Você é o Guardião do SISTEMA N.E.O.N. 3.5. Trate o usuário por ${nomeDoJogador}. Seja conciso.`,
             tools: [{ functionDeclarations: [declaracaoClima, declaracaoMoeda, declaracaoXP] }]
         }, { apiVersion: "v1beta" }); 
 
-        const chatSession = modelIA.startChat({ history: historicoSeguro });
-        let result = await chatSession.sendMessage(pergunta);
-        let parts = result.response.candidates?.[0]?.content?.parts;
-        let functionCallPart = parts?.find(p => p.functionCall);
-
-        while (functionCallPart) {
-            const { name, args } = functionCallPart.functionCall;
-            let functionResult = {};
-
-            if (name === "buscarClimaTempoReal") {
-                functionResult = await buscarClimaTempoReal(args.cidade);
-            } else if (name === "converterMoedas") {
-                functionResult = await converterMoedas(args.valor, args.de, args.para);
-            } else if (name === "adicionarXP") {
-                const nickAlvo = args.nickname || nomeDoJogador;
-                functionResult = await adicionarXP(nickAlvo, args.quantidade);
-            }
-
-            result = await chatSession.sendMessage([
-                { functionResponse: { name: name, response: { result: functionResult } } }
-            ]);
-
-            parts = result.response.candidates?.[0]?.content?.parts;
-            functionCallPart = parts?.find(p => p.functionCall);
-        }
-
+        const chatSession = modelIA.startChat({ history: [] });
+        const result = await chatSession.sendMessage(pergunta);
         const respostaTexto = result.response.text();
 
-        if (usandoBanco && mongoose.connection.readyState === 1) {
-            try {
-                await MensagemDbModel.create({ role: "user", parts: [{ text: pergunta }] });
-                await MensagemDbModel.create({ role: "model", parts: [{ text: respostaTexto }] });
-            } catch (saveErr) {
-                console.error("❌ Erro ao salvar histórico:", saveErr.message);
-            }
-        } else {
-            memoriaContingencia.push({ role: "user", parts: [{ text: pergunta }] });
-            memoriaContingencia.push({ role: "model", parts: [{ text: respostaTexto }] });
-        }
+        salvarMensagemHistorico("user", pergunta);
+        salvarMensagemHistorico("model", respostaTexto);
 
         return res.status(200).json({ sucesso: true, resposta: respostaTexto });
-
     } catch (erro) {
-        console.error("❌ ERRO NO PROCESSO:", erro.message);
         return res.status(500).json({ sucesso: false, erro: `Falha no Servidor: ${erro.message}` });
     }
 });
 
-// Limpeza das coleções (inclui a limpeza dos documentos RAG)
+// Limpeza de Banco
 app.delete('/api/chat/limpar', async (req, res) => {
     try {
         memoriaContingencia = [];
@@ -481,7 +443,95 @@ app.delete('/api/chat/limpar', async (req, res) => {
     }
 });
 
+// ====================================================================
+// 6. SPRINT 7: LÓGICA DE WEBSOCKETS (SALA PÚBLICA EM TEMPO REAL)
+// ====================================================================
+
+io.on('connection', (socket) => {
+    const nomeUsuario = socket.usuario?.nickname || "Operador";
+    console.log(`⚡ [WebSocket] Conexão ativa: ${nomeUsuario} (${socket.id})`);
+
+    // DESAFIO HACKER 1: Notifica a todos o número atual de clientes conectados
+    io.emit('usuariosOnline', io.engine.clientsCount);
+
+    // ESCUTA DE MENSAGENS EM TEMPO REAL
+    socket.on('novaMensagem', async (dados) => {
+        const texto = dados.texto ? dados.texto.trim() : "";
+        if (!texto) return;
+
+        // Pacote da mensagem do usuário
+        const pacoteMensagem = {
+            id: Date.now() + Math.random().toString(36).substring(2, 6),
+            autor: nomeUsuario,
+            texto: texto,
+            tipo: 'usuario',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        // 1. BROADCAST IMEDIATO: Envia para todas as abas conectadas na sala
+        io.emit('mensagemRecebida', pacoteMensagem);
+        salvarMensagemHistorico("user", `${nomeUsuario}: ${texto}`);
+
+        // 2. GATILHO DA IA (INVOCATION TRIGGER): Verifica se chamaram @gemini, @neon ou @bot
+        const textoMin = texto.toLowerCase();
+        if (textoMin.includes('@gemini') || textoMin.includes('@neon') || textoMin.includes('@bot')) {
+            // Emite aviso na sala de que o moderador está digitando
+            io.emit('usuarioDigitando', { usuario: '🤖 Moderador N.E.O.N.', digitando: true });
+
+            try {
+                // Remove a menção para deixar a pergunta limpa
+                const perguntaLimpa = texto.replace(/@gemini|@neon|@bot/gi, '').trim() || "Olá a todos! Como posso ajudar a sala?";
+
+                const modelIA = genAI.getGenerativeModel({ 
+                    model: "gemini-2.5-flash",
+                    systemInstruction: `Você é o Moderador N.E.O.N. em uma sala pública de chat em tempo real. 
+                    Você foi invocado pelo usuário "${nomeUsuario}". 
+                    Responda diretamente para ele e para a sala inteira de forma curta, prestativa e inteligente.`
+                });
+
+                const result = await modelIA.generateContent(perguntaLimpa);
+                const respostaTexto = result.response.text();
+
+                // 3. BROADCAST DA RESPOSTA DA IA PARA TODA A SALA
+                io.emit('mensagemRecebida', {
+                    id: Date.now() + Math.random().toString(36).substring(2, 6),
+                    autor: '🤖 Moderador N.E.O.N.',
+                    texto: respostaTexto,
+                    tipo: 'ia',
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
+
+                salvarMensagemHistorico("model", respostaTexto);
+
+            } catch (err) {
+                console.error("❌ Erro ao invocar Moderador IA:", err.message);
+            } finally {
+                io.emit('usuarioDigitando', { usuario: '🤖 Moderador N.E.O.N.', digitando: false });
+            }
+        }
+    });
+
+    // DESAFIO HACKER 2: Indicador de Digitação (Typing Indicator)
+    socket.on('digitando', (isDigitando) => {
+        // Envia apenas para os OUTROS usuários (broadcast)
+        socket.broadcast.emit('usuarioDigitando', {
+            usuario: nomeUsuario,
+            digitando: Boolean(isDigitando)
+        });
+    });
+
+    // Desconexão
+    socket.on('disconnect', () => {
+        console.log(`🔌 [WebSocket] Desconectado: ${nomeUsuario}`);
+        io.emit('usuariosOnline', io.engine.clientsCount);
+    });
+});
+
+// ====================================================================
+// INICIALIZAÇÃO DO SERVIDOR HÍBRIDO (HTTP + WEBSOCKET)
+// ====================================================================
 const PORTA = process.env.PORT || 3000;
-app.listen(PORTA, () => {
-    console.log(`🚀 SERVIDOR OPERACIONAL NA PORTA ${PORTA}`);
+server.listen(PORTA, () => {
+    console.log(`🚀 SERVIDOR REAL-TIME OPERACIONAL NA PORTA ${PORTA}`);
+    console.log(`⚡ WebSockets ativos via Socket.io com autenticação JWT`);
 });
