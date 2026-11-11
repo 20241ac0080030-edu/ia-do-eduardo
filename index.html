@@ -42,7 +42,7 @@
                     <span id="textoSaude" class="status-label">API</span>
                 </div>
 
-                <!-- DESAFIO HACKER 1: Contador de Usuários Online na Sala -->
+                <!-- DESAFIO HACKER (SPRINT 7): Contador de Usuários Online na Sala -->
                 <div id="contadorOnline" class="online-chip" title="Usuários conectados em tempo real na sala">
                     <span class="online-dot"></span>
                     <span id="textoOnline">1 online</span>
@@ -66,7 +66,7 @@
                     </select>
                 </div>
 
-                <!-- Botão de Ranking -->
+                <!-- Botão de Ranking (Hall da Fama) -->
                 <button id="btnRanking" class="btn-icon" title="Ver Ranking Global">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
@@ -79,6 +79,15 @@
                         <path d="M6 4h12v6a6 6 0 0 1-12 0V4z"></path>
                     </svg>
                 </button>
+
+                <!-- SPRINT 8: Botão para Acessar o Dashboard Analytics & FinOps -->
+                <a href="dashboard.html" class="btn-icon" title="Centro de Comando (Dashboard FinOps)" style="text-decoration: none;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"></line>
+                        <line x1="12" y1="20" x2="12" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                    </svg>
+                </a>
             </div>
         </header>
 
@@ -95,12 +104,12 @@
                 </div>
                 <div class="msg-body">
                     Sala pública em tempo real conectada via WebSockets. <br>
-                    Converse livremente com os outros membros. Para invocar a inteligência artificial, mencione <b>@gemini</b> ou <b>@neon</b> na sua mensagem!
+                    Converse livremente com outros membros. Para invocar a inteligência artificial, mencione <b>@gemini</b> ou <b>@neon</b> na sua mensagem!
                 </div>
             </div>
         </section>
 
-        <!-- DESAFIO HACKER 2: Indicador de Digitação Flutuante -->
+        <!-- DESAFIO HACKER (SPRINT 7): Indicador de Digitação Flutuante -->
         <div id="avisoDigitando" class="typing-indicator-bar" style="display: none;"></div>
 
         <!-- Barra Flutuante de Documento Ativo (RAG) -->
@@ -175,7 +184,9 @@
                 </div>
                 <button id="fecharRanking" class="modal-close-btn">&times;</button>
             </header>
-            <div class="modal-content-area" id="rankingTabela"></div>
+            <div class="modal-content-area" id="rankingTabela">
+                <!-- Preenchido via JavaScript -->
+            </div>
         </div>
     </div>
 

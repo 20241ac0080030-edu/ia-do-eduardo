@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>N.E.O.N. — Centro de Comando (Analytics & FinOps)</title>
+    
+    <!-- Favicon Minimalista -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2245%22 fill=%22%236366f1%22/></svg>">
+    
+    <!-- [REQ-007] Importação Externa Obrigatória do Chart.js via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Desafio Hacker: Biblioteca do Socket.io para Telemetria em Tempo Real -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+    <style>
+        :root {
+            --bg-base: #070709;
+            --bg-surface: rgba(18, 18, 22, 0.75);
+            --bg-card: #131317;
+            --border-subtle: rgba(255, 255, 255, 0.07);
+            --border-strong: rgba(255, 255, 255, 0.12);
+            --text-high: #f4f4f6;
+            --text-muted: #80808b;
+            --accent: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.25);
+            --status-emerald: #10b981;
+            --status-rose: #f43f5e;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+            --radius-sm: 6px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(at 50% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 60%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.04) 0px, transparent 50%);
+            color: var(--text-high);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 28px 20px;
+            display: flex;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .dashboard-container {
+            width: 100%;
+            max-width: 980px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* BARRA SUPERIOR */
+        .dash-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .dash-title-group h1 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .dash-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .dash-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-nav {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-high);
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-nav:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--border-strong);
+        }
+
+        /* GRID DE MÉTRICAS (KPIs) */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+        }
+
+        .kpi-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .kpi-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: -0.02em;
+        }
+
+        .kpi-subtext {
+            font-size: 11px;
+            color: var(--status-emerald);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ÁREA DO GRÁFICO */
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 16px 32px -10px rgba(0, 0, 0, 0.6);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .realtime-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            font-size: 11px;
+            color: var(--status-emerald);
+            font-weight: 500;
+        }
+
+        .pulse-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--status-emerald);
+            box-shadow: 0 0 8px var(--status-emerald);
+            animation: pulseAnim 2s infinite ease-in-out;
+        }
+
+        @keyframes pulseAnim {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.85); }
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 320px;
+            width: 100%;
+        }
+
+        #erroBloqueio {
+            display: none;
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+            color: #fca5a5;
+            padding: 14px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <main class="dashboard-container">
+        <!-- Barra de Topo -->
+        <header class="dash-header">
+            <div class="dash-title-group">
+                <h1>Centro de Comando — N.E.O.N.</h1>
+                <p class="dash-subtitle">Telemetria de Tokens, Controle Financeiro (FinOps) e Métricas de IA</p>
+            </div>
+            <div class="dash-actions">
+                <a href="index.html" class="btn-nav">
+                    ← Voltar ao Chat
+                </a>
+            </div>
+        </header>
+
+        <!-- Alerta de Bloqueio RBAC (403 Forbidden) -->
+        <div id="erroBloqueio"></div>
+
+        <!-- Grade de Indicadores (KPIs) -->
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <span class="kpi-label">Total de Tokens Gastos</span>
+                <span class="kpi-value" id="kpiTokens">0</span>
+                <span class="kpi-subtext">Agregado via $group + $sum</span>
+            </div>
+
+            <div class="kpi-card">
+                <span class="kpi-label">Custo Estimado</span>
+                <span class="kpi-value" id="kpiCusto">$0.0000</span>
+                <span class="kpi-subtext" style="color: var(--text-muted)">Base: ~$0.15 / 1M tokens</span>
+            </div>
+
+            <div class="kpi-card">
+                <span class="kpi-label">Mensagens Processadas</span>
+                <span class="kpi-value" id="kpiMensagens">0</span>
+                <span class="kpi-subtext" style="color: var(--accent)">Registro em MongoDB</span>
+            </div>
+
+            <div class="kpi-card">
+                <span class="kpi-label">Usuários Cadastrados</span>
+                <span class="kpi-value" id="kpiUsuarios">0</span>
+                <span class="kpi-subtext" style="color: var(--text-muted)">Modelo models/Usuario</span>
+            </div>
+        </section>
+
+        <!-- Card Principal do Gráfico -->
+        <section class="chart-card">
+            <div class="chart-header">
+                <h2>Consumo de Tokens por Requisição</h2>
+                <!-- Desafio Hacker: Indicador Real-Time -->
+                <div class="realtime-badge">
+                    <span class="pulse-dot"></span>
+                    <span>Telemetria em Tempo Real (Socket.io)</span>
+                </div>
+            </div>
+
+            <div class="chart-wrapper">
+                <!-- [REQ-007] Elemento renderizador com id="graficoTokens" -->
+                <canvas id="graficoTokens"></canvas>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const URL_LOCAL = "http://localhost:3000";
+        const URL_NUVEM = "https://t1-p1-a5-o-despertar-da-ia.onrender.com";
+        const URL_ATIVA = URL_LOCAL; // Altere para URL_NUVEM ao enviar para produção
+
+        let meuGrafico = null;
+
+        // Recupera ou solicita o token JWT do usuário
+        function obterTokenAutenticacao() {
+            let token = sessionStorage.getItem("neon_jwt_token");
+            if (!token) {
+                // Token de contingência para teste local com permissão de admin
+                token = localStorage.getItem("token_saas");
+            }
+            return token;
+        }
+
+        // Função que busca dados agregados na rota protegida GET /api/analytics/tokens
+        async function carregarDashboard() {
+            const token = obterTokenAutenticacao();
+            const boxErro = document.getElementById("erroBloqueio");
+
+            try {
+                const resposta = await fetch(`${URL_ATIVA}/api/analytics/tokens`, {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                if (resposta.status === 403) {
+                    boxErro.textContent = "⛔ 403 Forbidden: Acesso negado. Seu usuário não possui a permissão 'admin' no banco de dados.";
+                    boxErro.style.display = "block";
+                    return;
+                }
+
+                if (!resposta.ok) {
+                    throw new Error(`Erro HTTP ${resposta.status}`);
+                }
+
+                const dados = await resposta.json();
+
+                // Atualiza KPIs
+                document.getElementById("kpiTokens").textContent = dados.totalTokens.toLocaleString('pt-BR');
+                document.getElementById("kpiCusto").textContent = `$${dados.custoEstimadoUSD.toFixed(4)}`;
+                document.getElementById("kpiMensagens").textContent = dados.totalMensagens.toLocaleString('pt-BR');
+                document.getElementById("kpiUsuarios").textContent = dados.totalUsuarios.toLocaleString('pt-BR');
+
+                // Prepara dados do gráfico
+                const labels = dados.historico.map((item, idx) => `#${idx + 1} (${item.autor})`);
+                const valores = dados.historico.map(item => item.tokensGastos);
+
+                renderizarGrafico(labels, valores);
+
+            } catch (err) {
+                console.error("Falha ao carregar dashboard:", err.message);
+                boxErro.textContent = `Aviso: ${err.message}. Certifique-se de que o backend está rodando e que você possui um token com role: 'admin'.`;
+                boxErro.style.display = "block";
+                
+                // Renderiza gráfico vazio inicial
+                renderizarGrafico(["Aguardando dados..."], [0]);
+            }
+        }
+
+        // [REQ-007] Renderização do Chart.js no canvas com id="graficoTokens"
+        function renderizarGrafico(labels, data) {
+            const ctx = document.getElementById('graficoTokens').getContext('2d');
+
+            if (meuGrafico) {
+                meuGrafico.destroy();
+            }
+
+            meuGrafico = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Tokens Gastos na Requisição',
+                        data: data,
+                        backgroundColor: 'rgba(99, 102, 241, 0.4)',
+                        borderColor: '#6366f1',
+                        borderWidth: 1.5,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#80808b', font: { size: 11 } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#80808b', font: { size: 11 } }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#d4d4d8', font: { size: 12 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // DESAFIO HACKER: Integração com WebSockets para atualização em tempo real sem F5
+        function conectarSocketRealTime() {
+            const token = obterTokenAutenticacao();
+            const socket = io(URL_ATIVA, {
+                auth: { token: token }
+            });
+
+            socket.on("novoGastoDeToken", (tokensGastos) => {
+                console.log("⚡ [Dashboard Real-Time] Novo gasto de tokens recebido:", tokensGastos);
+
+                if (meuGrafico && tokensGastos > 0) {
+                    const novoIndice = meuGrafico.data.labels.length + 1;
+                    meuGrafico.data.labels.push(`#${novoIndice} (Ao vivo)`);
+                    meuGrafico.data.datasets[0].data.push(tokensGastos);
+
+                    // Mantém apenas os últimos 12 pontos no gráfico
+                    if (meuGrafico.data.labels.length > 12) {
+                        meuGrafico.data.labels.shift();
+                        meuGrafico.data.datasets[0].data.shift();
+                    }
+
+                    meuGrafico.update();
+
+                    // Atualiza o KPI somando os novos tokens
+                    const elemTokens = document.getElementById("kpiTokens");
+                    const tokensAtuais = parseInt(elemTokens.textContent.replace(/\./g, '')) || 0;
+                    const novoTotal = tokensAtuais + tokensGastos;
+                    elemTokens.textContent = novoTotal.toLocaleString('pt-BR');
+                    
+                    const novoCusto = (novoTotal / 1000000) * 0.15;
+                    document.getElementById("kpiCusto").textContent = `$${novoCusto.toFixed(4)}`;
+                }
+            });
+        }
+
+        // Inicialização ao carregar
+        window.addEventListener('DOMContentLoaded', () => {
+            carregarDashboard();
+            conectarSocketRealTime();
+        });
+    </script>
+</body>
+</html>
